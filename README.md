@@ -23,5 +23,6 @@ conda install -c conda-forge ezc3d
 
 ## Visualization
 ```
-python tools/viz.py --bvh-files [space separated .bvh filenames]
+python tools/viz/viz_bvh.py --bvh-files [space separated .bvh filenames]
+python tools/viz/viz_c3d.py --c3d-files [space seperated .c3d filenames]
 ```
