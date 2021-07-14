@@ -1,0 +1,28 @@
+FROM nvidia/cuda:11.2.0-base
+
+ENV DEBIAN_FRONTEND noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+		ca-certificates git wget vim cmake ninja-build protobuf-compiler \
+		libprotobuf-dev build-essential cmake curl ca-certificates screen \
+  	&& rm -rf /var/lib/apt/lists/*
+
+WORKDIR /opt
+RUN curl -o ~/miniconda.sh https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh \
+    && chmod +x ~/miniconda.sh \
+    && ~/miniconda.sh -b -p /opt/conda \
+    && rm ~/miniconda.sh \
+    && /opt/conda/bin/conda install -y python=3.8 \
+    && /opt/conda/bin/conda install -y numpy jupyter matplotlib pandas tqdm \
+    && /opt/conda/bin/conda install -y -c conda-forge ezc3d \
+    && /opt/conda/bin/conda clean -ya
+
+ENV PATH /opt/conda/bin:$PATH
+
+RUN git clone https://github.com/facebookresearch/fairmotion.git \
+    && cd fairmotion \
+    && python -m pip install -e .
+
+
+#Port for Jupyter
+EXPOSE 8888
+
