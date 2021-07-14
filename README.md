@@ -26,7 +26,7 @@ To reduce the number of markers to 41 and remove one subject from two subjects (
 python c3d_cleaner.py
 ```
 
-To parse asf/amc and save global transformation matrices of each frame into npy format (Could take long, must be )
+To parse asf/amc and save global transformation matrices of each frame into npy format (Could take long, must be optimized)
 ```
 python asfamc2npy.py
 ```
