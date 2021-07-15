@@ -3,7 +3,7 @@ import ezc3d
 from tqdm import tqdm
 from random import randint
 
-c3d_dir = "../subjects/"
+c3d_dir = "dataset/all_c3d/subjects"
 c3d_folders = os.listdir(c3d_dir)
 two_subject_folders = ['18', '19', '20', '21', '22', '23', '33', '34']
 
@@ -174,7 +174,12 @@ def clean_all(save_dir):
         tqdm_batch.close()
 
 
-def main(data_dir="data/"):
+def main(data_dir="dataset/clean_c3d/subjects/"):
+    dir_split = data_dir.split("/")
+    if not os.path.exists(dir_split[0] + "/" + dir_split[1])
+        os.mkdir(dir_split[0] + "/" + dir_split[1])
+    if not os.path.exists(data_dir):
+        os.mkdir(data_dir)
     for folder in c3d_folders:
         path = os.path.join(data_dir, folder)
         if not os.path.exists(path):

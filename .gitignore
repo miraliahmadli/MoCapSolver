@@ -129,3 +129,9 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+/dataset/all_asfamc
+/dataset/all_c3d
+/dataset/asfamc_npy
+/dataset/clean_c3d
+
