@@ -2,7 +2,8 @@ import torch
 import numpy as np
 
 
-'''
+def LBS_np(w, Z, Y):
+    '''
     Linear Blend Skinning function
     Parameters:
         w: weights associated with marker offsets, dim: (m, j)
@@ -10,8 +11,7 @@ import numpy as np
         Y: rotation + translation matrices, dim: (n, j, 3, 4)
     Return:
         X: global marker positions, dim: (n, m, 3)
-'''
-def LBS_np(w, Z, Y):
+    '''
     m, j = w.shape
     n = Z.shape[0]
 
@@ -85,7 +85,8 @@ def LBS_torch(w, Z, Y):
     return X
 
 
-'''
+def svd_rot_np(P, Q, w):
+    '''
     Implementation of "Least-Squares Rigid Motion Using SVD"
     https://igl.ethz.ch/projects/ARAP/svd_rot.pdf
 
@@ -97,8 +98,7 @@ def LBS_torch(w, Z, Y):
     Solution:
         t = q_mean - R*p_mean
         R = V * D * U.T
-'''
-def svd_rot_np(P, Q, w):
+    '''
     assert P.shape == Q.shape
     n, k = P.shape
     assert k == w.shape[0]
@@ -160,6 +160,24 @@ def svd_rot_torch(P, Q, w):
     t = Q_ - torch.matmul(R, P_)
 
     return R, t
+
+
+def symmetric_orthogonalization(x):
+  """
+  Maps 9D input vectors onto SO(3) via symmetric orthogonalization.
+
+  x: should have size [batch_size, 9]
+
+  Output has size [batch_size, 3, 3], where each inner 3x3 matrix is in SO(3).
+  """
+  m = x.view(-1, 3, 3)
+  u, s, v = torch.svd(m)
+  vt = torch.transpose(v, 1, 2)
+  det = torch.det(torch.matmul(u, vt))
+  det = det.view(-1, 1, 1)
+  vt = torch.cat((vt[:, :2, :], vt[:, -1:, :] * det), 1)
+  r = torch.matmul(u, vt)
+  return r
 
 
 def test_lbs():
