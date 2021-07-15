@@ -1,5 +1,4 @@
 import numpy as np
-import pandas as pd
 from pathlib import Path
 from ..tools import amc_parser as amc
 import multiprocess
