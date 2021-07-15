@@ -98,19 +98,19 @@ def LBS_torch(w, Z, Y):
         t = q_mean - R*p_mean
         R = V * D * U.T
 '''
-def svd_rot(P, Q, w):
+def svd_rot_np(P, Q, w):
     assert P.shape == Q.shape
     n, k = P.shape
     assert k == w.shape[0]
-    assert w.shape[0] == w.shape[1]
 
     # X,Y are n x k
-    P_ = P.mean(axis=0)
-    Q_ = Q.mean(axis=0)
+    P_ = np.dot(P, w) / np.sum(w)
+    Q_ = np.dot(P, w) / np.sum(w)
     X = P - P_
     Y = Q - Q_
 
     # S is n x n
+    W = np.diag(w.reshape(-1))
     S = np.matmul(np.matmul(X, W), Y.T)
 
     # U, V are n x m
@@ -126,6 +126,38 @@ def svd_rot(P, Q, w):
 
     # t is n x k
     t = Q_ - np.matmul(R, P_)
+
+    return R, t
+
+
+def svd_rot_torch(P, Q, w):
+    assert P.shape == Q.shape
+    n, k = P.shape
+    assert k == w.shape[0]
+
+    # X,Y are n x k
+    P_ = torch.mm(P, w) / torch.sum(w)
+    Q_ = torch.mm(P, w) / torch.sum(w)
+    X = P - P_
+    Y = Q - Q_
+
+    # S is n x n
+    W = torch.diag(w.reshape(-1))
+    S = torch.matmul(np.matmul(X, W), Y.T)
+
+    # U, V are n x m
+    U, _, V_t = torch.svd(S)
+    V = V_t.T
+
+    m = U.shape[1]
+    D = torch.diag(torch.ones(m))
+    D[-1, -1] = torch.det(V*U.T)
+
+    # R is n x n
+    R = torch.matmul(torch.matmul(V, D), U.T)
+
+    # t is n x k
+    t = Q_ - torch.matmul(R, P_)
 
     return R, t
 
@@ -156,7 +188,20 @@ def test_lbs():
 
 
 def test_svd():
-    pass
+    n = 20
+    k = 31
+
+    w = np.random.rand(k, 1)
+    P = np.random.rand(n, k)
+    Q = np.random.rand(n, k)
+
+    w = torch.Tensor(w)
+    P = torch.Tensor(P)
+    Q = torch.Tensor(Q)
+    # R, t = svd_rot_np(P, Q, w)
+    R, t = svd_rot_torch(P, Q, w)
+    print(R.shape)
+    print(t.shape)
 
 
 if __name__ == "__main__":
