@@ -38,3 +38,8 @@ python tools/viz/viz_c3d.py --c3d-files [space seperated .c3d filenames]
 python tools/viz/viz_c3damc.py --c3d-files [space seperated .c3d filenames] --amc-files [space seperated .amc filenames]
 python tools/viz/viz_c3dbvh.py --c3d-files [space seperated .c3d filenames] --bvh-files [space seperated .bvh filenames]
 ```
+
+## Extras
+- [Fairmotion](https://github.com/facebookresearch/fairmotion)
+- [AMCParser](https://github.com/CalciferZh/AMCParser)
+- [ezc3d](https://github.com/pyomeca/ezc3d)
