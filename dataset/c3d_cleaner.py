@@ -104,6 +104,8 @@ def clean_markers(c3d_file="", c3d=None, out_path="", save=True):
 
     # find the labels with multiple markers
     for i, label in enumerate(labels):
+        label = label.replace("ANT", "LBHD")
+        label = label.replace("NOSE", "RBHD")
         _, label_name = parse_label(label)
         is_label = False
         for l in main_labels:
@@ -133,6 +135,12 @@ def clean_markers(c3d_file="", c3d=None, out_path="", save=True):
     for label in labels_to_remove:
         c['parameters']['POINT']['LABELS']['value'].remove(label)
     c['data']['points'] = c['data']['points'][:, pred, :]
+
+    labels = c['parameters']['POINT']['LABELS']['value']
+    sorted_labels = sorted(enumerate(labels), key=lambda x:x[1])
+    indices = [l[0] for l in sorted_labels]
+    c['parameters']['POINT']['LABELS']['value'] = [l[1] for l in sorted_labels]
+    c['data']['points'] = c['data']['points'][:, indices, :]
 
     if save:
         del c['data']['meta_points']
@@ -176,7 +184,7 @@ def clean_all(save_dir):
 
 def main(data_dir="dataset/clean_c3d/subjects/"):
     dir_split = data_dir.split("/")
-    if not os.path.exists(dir_split[0] + "/" + dir_split[1])
+    if not os.path.exists(dir_split[0] + "/" + dir_split[1]):
         os.mkdir(dir_split[0] + "/" + dir_split[1])
     if not os.path.exists(data_dir):
         os.mkdir(data_dir)
