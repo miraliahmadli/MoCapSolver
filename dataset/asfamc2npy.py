@@ -1,6 +1,6 @@
 import numpy as np
 from pathlib import Path
-from ..tools import amc_parser as amc
+from tools import amc_parser as amc
 import multiprocess
 import os, sys
 
