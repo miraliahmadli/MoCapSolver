@@ -150,7 +150,7 @@ def symmetric_orthogonalization(x):
   return r
 
 
-def corrupt_np(X, sigma_occ=0.1, sigma_shift=0.1, beta=500):
+def corrupt_np(X, sigma_occ=0.1, sigma_shift=0.1, beta=50):
     '''
     Given marker data X as input this algorithm is used
     to randomly occlude markers (placing them at zero) or shift markers
@@ -194,7 +194,7 @@ def corrupt_np(X, sigma_occ=0.1, sigma_shift=0.1, beta=500):
     return X_hat
 
 
-def corrupt_torch(X, sigma_occ=0.1, sigma_shift=0.1, beta=500):
+def corrupt_torch(X, sigma_occ=0.1, sigma_shift=0.1, beta=50):
     n, m , _ = X.shape
     
     # Sample probability at which to occlude / shift markers.
@@ -208,15 +208,85 @@ def corrupt_torch(X, sigma_occ=0.1, sigma_shift=0.1, beta=500):
     a_shift = torch.abs(a_shift)
     a_shift[a_shift > 2*sigma_shift] = 2*sigma_shift
 
-    X_occ = torch.bernoulli(a_occ)
-    X_shift = torch.bernoulli(a_shift)
-    for _ in range(m-1):
-        X_occ = torch.cat((X_occ, torch.bernoulli(a_occ)), axis=1)
-        X_shift = torch.cat((X_shift, torch.bernoulli(a_shift)), axis=1)
+    sampler_occ = torch.distributions.bernoulli.Bernoulli(a_occ)
+    sampler_shift = torch.distributions.bernoulli.Bernoulli(a_shift)
+    X_occ = sampler_occ.sample((m,)).transpose(1, 0) # n x m
+    X_shift = sampler_shift.sample((m,)).transpose(1, 0) # n x m
     
     # Sample the magnitude by which to shift each marker.
-    sampler = torch.distributions.Uniform(low=-beta, high=beta)
-    X_v = sampler.sample((n, m, 3)) # n x m x 3
+    sampler_beta = torch.distributions.Uniform(low=-beta, high=beta)
+    X_v = sampler_beta.sample((n, m, 3)) # n x m x 3
+
+    # Move shifted markers and place occluded markers at zero.
+    X_hat = X + torch.multiply(X_v, X_shift.reshape((n, m, 1)))
+    X_hat = torch.multiply(X_hat, (1 - X_occ).reshape((n, m, 1)))
+
+    return X_hatdef corrupt_np(X, sigma_occ=0.1, sigma_shift=0.1, beta=50):
+    '''
+    Given marker data X as input this algorithm is used
+    to randomly occlude markers (placing them at zero) or shift markers
+    (adding some offset to their position).
+
+    Parameters:
+        X: global marker positions, dim: (n x m x 3)
+        sigma_occ: variance for occlusion distribution
+                   adjusts the probability of a marker being occluded
+        sigma_shift: variance for shift distribution
+                     adjusts the probability of a marker being shifted out of place
+        beta: parameter of uniform distribution for shifting
+              controls the scale of the random translations applied to shifted markers
+
+    Returns:
+        X_hat: corrupted X with same dimension
+    '''
+    n, m, _ = X.shape
+    
+    # Sample probability at which to occlude / shift markers.
+    a_occ = np.random.normal(0, sigma_occ, n) # (n, )
+    a_shift = np.random.normal(0, sigma_shift, n) # (n, )
+ 
+    # Sample using clipped probabilities if markers are occluded / shifted.
+    a_occ = np.abs(a_occ)
+    a_occ[a_occ > 2*sigma_occ] = 2*sigma_occ
+
+    a_shift = np.abs(a_shift)
+    a_shift[a_shift > 2*sigma_shift] = 2*sigma_shift
+
+    X_occ = np.array([np.random.binomial(1, occ, size=m) for occ in a_occ]) # n x m
+    X_shift = np.array([np.random.binomial(1, shift, size=m) for shift in a_shift]) # n x m
+    
+    # Sample the magnitude by which to shift each marker.
+    X_v = np.random.uniform(-beta, beta, (n, m, 3)) # n x m x 3
+
+    # Move shifted markers and place occluded markers at zero.
+    X_hat = X + np.multiply(X_v, X_shift.reshape((n, m, 1)))
+    X_hat = np.multiply(X_hat, (1 - X_occ).reshape((n, m, 1)))
+
+    return X_hat
+
+
+def corrupt_torch(X, sigma_occ=0.1, sigma_shift=0.1, beta=50):
+    n, m, _ = X.shape
+    
+    # Sample probability at which to occlude / shift markers.
+    a_occ = torch.normal(0.0, sigma_occ, (n, 1)) # (n, 1)
+    a_shift = torch.normal(0.0, sigma_shift, (n, 1)) # (n, 1)
+ 
+    # Sample using clipped probabilities if markers are occluded / shifted.
+    a_occ = torch.abs(a_occ)
+    a_occ[a_occ > 2*sigma_occ] = 2*sigma_occ
+
+    a_shift = torch.abs(a_shift)
+    a_shift[a_shift > 2*sigma_shift] = 2*sigma_shift
+
+    sampler_occ = torch.distributions.bernoulli.Bernoulli(a_occ)
+    sampler_shift = torch.distributions.bernoulli.Bernoulli(a_shift)
+    X_occ = sampler_occ.sample((m,)).transpose(1, 0) # n x m
+    X_shift = sampler_shift.sample((m,)).transpose(1, 0) # n x m
+    
+    # Sample the magnitude by which to shift each marker.
+    sampler_beta = torch.distributions.Uniform(low=-beta, high=beta)
+    X_v = sampler_beta.sample((n, m, 3)) # n x m x 3
 
     # Move shifted markers and place occluded markers at zero.
     X_hat = X + torch.multiply(X_v, X_shift.reshape((n, m, 1)))
