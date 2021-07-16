@@ -5,10 +5,12 @@ import numpy as np
 def LBS_np(w, Z, Y):
     '''
     Linear Blend Skinning function
+
     Parameters:
         w: weights associated with marker offsets, dim: (m, j)
         Z: local offsets, dim: (n, m, j, 3)
         Y: rotation + translation matrices, dim: (n, j, 3, 4)
+
     Return:
         X: global marker positions, dim: (n, m, 3)
     '''
@@ -25,42 +27,10 @@ def LBS_np(w, Z, Y):
 
     prod = np.matmul(Y_, Z_).transpose(0, 3, 1, 2) # j x m x n x 3
 
-    # for i in range(j):
-    #     for k in range(m):
-    #         prod[i, k, :, :] *= w_[i, k]
-    # X = np.sum(prod, axis=0).permute(1, 0, 2) # n x m x 3
-
     X = np.sum(
             np.multiply(prod, w_.reshape((j, m, 1, 1))), 
             axis=0).transpose(1, 0, 2) # n x m x 3
 
-    # for loop version
-    # X_1 = np.zeros((n, m, 3))
-    # for i in range(j):
-    #     w_i = w[:, i] # m x 1
-    #     Z_i = Z[:, :, i, :] # n x m x 3
-    #     Y_i = Y[:, i, :, :] # n x 3 x 4
-
-    #     prod = np.zeros((n, m, 3))
-    #     for pose in range(n):
-    #         for k in range(3):
-    #             for t in range(m):
-    #                 prod[pose, t, k] = Y_i[pose, k, 3] +\
-    #                                     Y_i[pose, k, 0]*Z_i[pose, t, 0] +\
-    #                                     Y_i[pose, k, 1]*Z_i[pose, t, 1] +\
-    #                                     Y_i[pose, k, 2]*Z_i[pose, t, 2]
-    #     for t in range(m):
-    #         prod[:, t, :] *= w_i[t]
-        
-    #     X_1 += prod
-
-    # max_error = float("-inf")
-    # for pose in range(n):
-    #     for k in range(3):
-    #         for t in range(m):
-    #             max_error = max(max_error, abs(X[pose, t, k] - X_1[pose, t, k]))
-    # print(max_error)
-    # print((X == X_1).all())
     return X
 
 
@@ -180,6 +150,81 @@ def symmetric_orthogonalization(x):
   return r
 
 
+def corrupt_np(X, sigma_occ=0.1, sigma_shift=0.1, beta=500):
+    '''
+    Given marker data X as input this algorithm is used
+    to randomly occlude markers (placing them at zero) or shift markers
+    (adding some offset to their position).
+
+    Parameters:
+        X: global marker positions, dim: (n x m x 3)
+        sigma_occ: variance for occlusion distribution
+                   adjusts the probability of a marker being occluded
+        sigma_shift: variance for shift distribution
+                     adjusts the probability of a marker being shifted out of place
+        beta: parameter of uniform distribution for shifting
+              controls the scale of the random translations applied to shifted markers
+
+    Returns:
+        X_hat: corrupted X with same dimension
+    '''
+    n, m , _ = X.shape
+    
+    # Sample probability at which to occlude / shift markers.
+    a_occ = np.random.normal(0, sigma_occ, n) # (n, )
+    a_shift = np.random.normal(0, sigma_shift, n) # (n, )
+ 
+    # Sample using clipped probabilities if markers are occluded / shifted.
+    a_occ = np.abs(a_occ)
+    a_occ[a_occ > 2*sigma_occ] = 2*sigma_occ
+
+    a_shift = np.abs(a_shift)
+    a_shift[a_shift > 2*sigma_shift] = 2*sigma_shift
+
+    X_occ = np.array([np.random.binomial(1, occ, size=m) for occ in a_occ]) # n x m
+    X_shift = np.array([np.random.binomial(1, shift, size=m) for shift in a_shift]) # n x m
+    
+    # Sample the magnitude by which to shift each marker.
+    X_v = np.random.uniform(-beta, beta, (n, m, 3)) # n x m x 3
+
+    # Move shifted markers and place occluded markers at zero.
+    X_hat = X + np.multiply(X_v, X_shift.reshape((n, m, 1)))
+    X_hat = np.multiply(X_hat, (1 - X_occ).reshape((n, m, 1)))
+
+    return X_hat
+
+
+def corrupt_torch(X, sigma_occ=0.1, sigma_shift=0.1, beta=500):
+    n, m , _ = X.shape
+    
+    # Sample probability at which to occlude / shift markers.
+    a_occ = torch.normal(0.0, sigma_occ, (n, 1)) # (n, 1)
+    a_shift = torch.normal(0.0, sigma_shift, (n, 1)) # (n, 1)
+ 
+    # Sample using clipped probabilities if markers are occluded / shifted.
+    a_occ = torch.abs(a_occ)
+    a_occ[a_occ > 2*sigma_occ] = 2*sigma_occ
+
+    a_shift = torch.abs(a_shift)
+    a_shift[a_shift > 2*sigma_shift] = 2*sigma_shift
+
+    X_occ = torch.bernoulli(a_occ)
+    X_shift = torch.bernoulli(a_shift)
+    for _ in range(m-1):
+        X_occ = torch.cat((X_occ, torch.bernoulli(a_occ)), axis=1)
+        X_shift = torch.cat((X_shift, torch.bernoulli(a_shift)), axis=1)
+    
+    # Sample the magnitude by which to shift each marker.
+    sampler = torch.distributions.Uniform(low=-beta, high=beta)
+    X_v = sampler.sample((n, m, 3)) # n x m x 3
+
+    # Move shifted markers and place occluded markers at zero.
+    X_hat = X + torch.multiply(X_v, X_shift.reshape((n, m, 1)))
+    X_hat = torch.multiply(X_hat, (1 - X_occ).reshape((n, m, 1)))
+
+    return X_hat
+
+
 def test_lbs():
     n = 20
     j = 31
@@ -220,6 +265,16 @@ def test_svd():
     R, t = svd_rot_torch(P, Q, w)
     print(R.shape)
     print(t.shape)
+
+
+def test_corrupt():
+    n = 20
+    m = 31
+    X = np.random.rand(n, m, 3)
+    # X_hat = corrupt_np(X)
+    X = torch.Tensor(X)
+    X_hat = corrupt_torch(X)
+    print(X_hat.shape)
 
 
 if __name__ == "__main__":
