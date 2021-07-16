@@ -1,6 +1,9 @@
 from pathlib import Path
 import pandas as pd
 
+# Issues with the number of markers
+exclude = ['103_05', '93_05', '87_02', '89_04', '89_05']
+
 def main():
     csv_filename = 'meta_data.csv'
     BASE_DIR = Path('.') / 'dataset'
@@ -21,6 +24,7 @@ def main():
     df['asf_path'] = df['amc_path'].map(lambda x: x.parent / (x.parent.stem + '.asf'))
     df['c3d_path'] = df['amc_path'].map(lambda x: BASE_DIR / 'clean_c3d' / 'subjects' / x.parent.stem / (x.stem + '.c3d'))
     df.drop(df[df['c3d_path'].map(lambda x: not x.exists())].index, inplace = True)
+    df.drop(df[df['c3d_path'].map(lambda x: x.stem in exclude)].index, inplace = True)
     df['motion_npy_path'] = df['amc_path'].map(lambda x: BASE_DIR / 'asfamc_npy' / 'subjects' / x.parent.stem / (x.stem + '.npy'))
     df['subject'] = df['amc_path'].map(lambda x: x.parent.stem)
     df['activity'] = df['amc_path'].map(lambda x: x.stem.split('_')[-1].lower())

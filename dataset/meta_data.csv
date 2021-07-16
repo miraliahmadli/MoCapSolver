@@ -150,7 +150,6 @@
 166,dataset/all_asfamc/subjects/103/103_06.amc,dataset/all_asfamc/subjects/103/103.asf,dataset/clean_c3d/subjects/103/103_06.c3d,dataset/asfamc_npy/subjects/103/103_06.npy,103,06,2.8050648666666667
 167,dataset/all_asfamc/subjects/103/103_03.amc,dataset/all_asfamc/subjects/103/103.asf,dataset/clean_c3d/subjects/103/103_03.c3d,dataset/asfamc_npy/subjects/103/103_03.npy,103,03,2.8050648666666667
 168,dataset/all_asfamc/subjects/103/103_01.amc,dataset/all_asfamc/subjects/103/103.asf,dataset/clean_c3d/subjects/103/103_01.c3d,dataset/asfamc_npy/subjects/103/103_01.npy,103,01,2.8050648666666667
-169,dataset/all_asfamc/subjects/103/103_05.amc,dataset/all_asfamc/subjects/103/103.asf,dataset/clean_c3d/subjects/103/103_05.c3d,dataset/asfamc_npy/subjects/103/103_05.npy,103,05,2.8050648666666667
 170,dataset/all_asfamc/subjects/103/103_08.amc,dataset/all_asfamc/subjects/103/103.asf,dataset/clean_c3d/subjects/103/103_08.c3d,dataset/asfamc_npy/subjects/103/103_08.npy,103,08,2.8050648666666667
 171,dataset/all_asfamc/subjects/103/103_02.amc,dataset/all_asfamc/subjects/103/103.asf,dataset/clean_c3d/subjects/103/103_02.c3d,dataset/asfamc_npy/subjects/103/103_02.npy,103,02,2.8050648666666667
 172,dataset/all_asfamc/subjects/14/14_29.amc,dataset/all_asfamc/subjects/14/14.asf,dataset/clean_c3d/subjects/14/14_29.c3d,dataset/asfamc_npy/subjects/14/14_29.npy,14,29,2.8443029666666666
@@ -760,7 +759,6 @@
 780,dataset/all_asfamc/subjects/90/90_28.amc,dataset/all_asfamc/subjects/90/90.asf,dataset/clean_c3d/subjects/90/90_28.c3d,dataset/asfamc_npy/subjects/90/90_28.npy,90,28,2.8263313666666665
 781,dataset/all_asfamc/subjects/93/93_01.amc,dataset/all_asfamc/subjects/93/93.asf,dataset/clean_c3d/subjects/93/93_01.c3d,dataset/asfamc_npy/subjects/93/93_01.npy,93,01,2.8050648666666667
 782,dataset/all_asfamc/subjects/93/93_03.amc,dataset/all_asfamc/subjects/93/93.asf,dataset/clean_c3d/subjects/93/93_03.c3d,dataset/asfamc_npy/subjects/93/93_03.npy,93,03,2.8050648666666667
-783,dataset/all_asfamc/subjects/93/93_05.amc,dataset/all_asfamc/subjects/93/93.asf,dataset/clean_c3d/subjects/93/93_05.c3d,dataset/asfamc_npy/subjects/93/93_05.npy,93,05,2.8050648666666667
 784,dataset/all_asfamc/subjects/93/93_07.amc,dataset/all_asfamc/subjects/93/93.asf,dataset/clean_c3d/subjects/93/93_07.c3d,dataset/asfamc_npy/subjects/93/93_07.npy,93,07,2.8050648666666667
 785,dataset/all_asfamc/subjects/93/93_06.amc,dataset/all_asfamc/subjects/93/93.asf,dataset/clean_c3d/subjects/93/93_06.c3d,dataset/asfamc_npy/subjects/93/93_06.npy,93,06,2.8050648666666667
 786,dataset/all_asfamc/subjects/93/93_04.amc,dataset/all_asfamc/subjects/93/93.asf,dataset/clean_c3d/subjects/93/93_04.c3d,dataset/asfamc_npy/subjects/93/93_04.npy,93,04,2.8050648666666667
@@ -779,7 +777,6 @@
 799,dataset/all_asfamc/subjects/87/87_03.amc,dataset/all_asfamc/subjects/87/87.asf,dataset/clean_c3d/subjects/87/87_03.c3d,dataset/asfamc_npy/subjects/87/87_03.npy,87,03,2.5144993333333336
 800,dataset/all_asfamc/subjects/87/87_05.amc,dataset/all_asfamc/subjects/87/87.asf,dataset/clean_c3d/subjects/87/87_05.c3d,dataset/asfamc_npy/subjects/87/87_05.npy,87,05,2.5144993333333336
 801,dataset/all_asfamc/subjects/87/87_04.amc,dataset/all_asfamc/subjects/87/87.asf,dataset/clean_c3d/subjects/87/87_04.c3d,dataset/asfamc_npy/subjects/87/87_04.npy,87,04,2.5144993333333336
-802,dataset/all_asfamc/subjects/87/87_02.amc,dataset/all_asfamc/subjects/87/87.asf,dataset/clean_c3d/subjects/87/87_02.c3d,dataset/asfamc_npy/subjects/87/87_02.npy,87,02,2.5144993333333336
 803,dataset/all_asfamc/subjects/131/131_06.amc,dataset/all_asfamc/subjects/131/131.asf,dataset/clean_c3d/subjects/131/131_06.c3d,dataset/asfamc_npy/subjects/131/131_06.npy,131,06,2.6386473666666665
 804,dataset/all_asfamc/subjects/131/131_13.amc,dataset/all_asfamc/subjects/131/131.asf,dataset/clean_c3d/subjects/131/131_13.c3d,dataset/asfamc_npy/subjects/131/131_13.npy,131,13,2.6386473666666665
 805,dataset/all_asfamc/subjects/131/131_09.amc,dataset/all_asfamc/subjects/131/131.asf,dataset/clean_c3d/subjects/131/131_09.c3d,dataset/asfamc_npy/subjects/131/131_09.npy,131,09,2.6386473666666665
@@ -879,8 +876,6 @@
 899,dataset/all_asfamc/subjects/82/82_03.amc,dataset/all_asfamc/subjects/82/82.asf,dataset/clean_c3d/subjects/82/82_03.c3d,dataset/asfamc_npy/subjects/82/82_03.npy,82,03,2.619916533333334
 900,dataset/all_asfamc/subjects/82/82_07.amc,dataset/all_asfamc/subjects/82/82.asf,dataset/clean_c3d/subjects/82/82_07.c3d,dataset/asfamc_npy/subjects/82/82_07.npy,82,07,2.619916533333334
 901,dataset/all_asfamc/subjects/89/89_06.amc,dataset/all_asfamc/subjects/89/89.asf,dataset/clean_c3d/subjects/89/89_06.c3d,dataset/asfamc_npy/subjects/89/89_06.npy,89,06,2.473259633333334
-902,dataset/all_asfamc/subjects/89/89_05.amc,dataset/all_asfamc/subjects/89/89.asf,dataset/clean_c3d/subjects/89/89_05.c3d,dataset/asfamc_npy/subjects/89/89_05.npy,89,05,2.473259633333334
-903,dataset/all_asfamc/subjects/89/89_04.amc,dataset/all_asfamc/subjects/89/89.asf,dataset/clean_c3d/subjects/89/89_04.c3d,dataset/asfamc_npy/subjects/89/89_04.npy,89,04,2.473259633333334
 904,dataset/all_asfamc/subjects/89/89_03.amc,dataset/all_asfamc/subjects/89/89.asf,dataset/clean_c3d/subjects/89/89_03.c3d,dataset/asfamc_npy/subjects/89/89_03.npy,89,03,2.473259633333334
 905,dataset/all_asfamc/subjects/89/89_01.amc,dataset/all_asfamc/subjects/89/89.asf,dataset/clean_c3d/subjects/89/89_01.c3d,dataset/asfamc_npy/subjects/89/89_01.npy,89,01,2.473259633333334
 906,dataset/all_asfamc/subjects/89/89_02.amc,dataset/all_asfamc/subjects/89/89.asf,dataset/clean_c3d/subjects/89/89_02.c3d,dataset/asfamc_npy/subjects/89/89_02.npy,89,02,2.473259633333334

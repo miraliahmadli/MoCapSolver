@@ -1,7 +1,8 @@
 import os
+from random import randint
 import ezc3d
 from tqdm import tqdm
-from random import randint
+import multiprocess
 
 c3d_dir = "dataset/all_c3d/subjects"
 c3d_folders = os.listdir(c3d_dir)
@@ -165,21 +166,19 @@ def clean_all(save_dir):
             tqdm_batch.update()
         tqdm_batch.close()
 
-    for folder in c3d_folders:
+    def parallel_fn(folder):
         if folder in two_subject_folders:
-            continue
+            return
         in_path = os.path.join(c3d_dir, folder)
         c3d_files = [os.path.join(in_path, fn) for fn in sorted(os.listdir(in_path))]
 
-        tqdm_batch = tqdm(total=len(c3d_files), dynamic_ncols=True)
         for i, fn in enumerate(c3d_files):
             out_path = fn.replace(c3d_dir,save_dir)
             clean_markers(c3d_file=fn, out_path=out_path)
 
-            tqdm_update = f"iteration={i},files={fn}"
-            tqdm_batch.set_postfix_str(tqdm_update)
-            tqdm_batch.update()
-        tqdm_batch.close()
+        print(f'Done: {folder}')
+    with multiprocess.Pool(processes = os.cpu_count()) as pool:
+        pool.map(parallel_fn, c3d_folders)
 
 
 def main(data_dir="dataset/clean_c3d/subjects/"):

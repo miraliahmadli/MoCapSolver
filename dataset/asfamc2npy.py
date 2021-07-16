@@ -1,8 +1,11 @@
-import numpy as np
-from pathlib import Path
-from tools import amc_parser as amc
-import multiprocess
 import os, sys
+from pathlib import Path
+
+import numpy as np
+import multiprocess
+
+from tools import amc_parser as amc
+
 
 def main():
     BASE_DIR = Path('.') / 'dataset' / 'all_asfamc' / 'subjects'
@@ -32,6 +35,7 @@ def main():
         with multiprocess.Pool(processes = os.cpu_count()) as pool:
             pool.map(save_as_npy, amc_paths)
         cur += 1
+
 
 if __name__ == '__main__':
     main()
