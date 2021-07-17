@@ -111,21 +111,20 @@ def clean_markers(c3d_file="", c3d=None, out_path="", save=True):
         is_label = False
         for l in main_labels:
             if label_name.startswith(l):
-                duplicate_labels[l].append((i, label_name, label))
+                duplicate_labels[l].append((label_name, label, i))
                 pred[i] = False
                 is_label = True
                 break
         if not is_label:
             labels_to_remove.append(label)
 
-    # randomly pick one element and remove others
     for label, duplicates in duplicate_labels.items():
         length = len(duplicates)
         if length == 0: 
             continue
 
-        pick = randint(0, length-1)
-        idx, _, _ = duplicates[pick]
+        pick = duplicates.index(min(duplicates))
+        _, _, idx = duplicates[pick]
         c['parameters']['POINT']['LABELS']['value'][idx] = label
         pred[idx] = True
         duplicates.pop(pick)
