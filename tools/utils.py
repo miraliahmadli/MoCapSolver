@@ -86,13 +86,13 @@ def svd_rot_np(P, Q, w):
     # U, V are n x m
     U, _, V_t = np.linalg.svd(S)
     V = V_t.T
+    Ut = U.T
 
-    m = U.shape[1]
-    D = np.diag(np.ones(m))
-    D[-1, -1] = np.linalg.det(V*U.T)
+    det = np.linalg.det(V*Ut)
+    Ut *= det
 
     # R is n x n
-    R = np.matmul(np.matmul(V, D), U.T)
+    R = np.matmul(V, Ut)
 
     # t is n x k
     t = Q_ - np.matmul(R, P_)
@@ -118,13 +118,13 @@ def svd_rot_torch(P, Q, w):
     # U, V are n x m
     U, _, V_t = torch.svd(S)
     V = V_t.T
+    Ut = U.T
 
-    m = U.shape[1]
-    D = torch.diag(torch.ones(m))
-    D[-1, -1] = torch.det(V*U.T)
+    det = torch.det(V*Ut)
+    Ut[-1] *= det
 
     # R is n x n
-    R = torch.matmul(torch.matmul(V, D), U.T)
+    R = torch.matmul(V, Ut)
 
     # t is n x k
     t = Q_ - torch.matmul(R, P_)
@@ -277,5 +277,5 @@ def test_corrupt():
 
 
 if __name__ == "__main__":
-    test_lbs()
-    # test_svd()
+    # test_lbs()
+    test_svd()
