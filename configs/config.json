@@ -1,0 +1,39 @@
+{
+    "train_datadir": "sample/",
+    "train_filenames": "sample/sample.txt",
+    
+    "val_datadir": "sample/",
+    "var_filenames": "sample/sample.txt",
+    
+    "test_datadir": "sample/",
+    "test_dir": "sample/sample.txt",
+    
+    "model_dir": "1/model.pth",
+
+    "train_sum": "1/tensorboard/train",
+    "val_sum": "1/tensorboard/val",
+    
+    "epochs": 100,
+    "batch_size": 128,
+
+    "model":{
+        "available": ["baseline", "least_square", "modified_baseline", "gnn"],
+        "used": "baseline",
+        "baseline": {
+            "hidden_size":2048
+        }
+    },
+
+    "use_gpu":true,
+
+    "optimizer":{
+        "available": ["SGD", "Adam"],
+        "used": "SGD",
+        "SGD": {
+            "lr": 0.001
+        },
+        "Adam": {
+            "lr": 0.001
+        }
+    }
+}
