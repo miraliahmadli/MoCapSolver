@@ -55,7 +55,7 @@ def LBS_torch(w, Z, Y):
     return X
 
 
-def svd_rot_np(P, Q, w):
+def svd_rot_np(P, Q):
     '''
     Implementation of "Least-Squares Rigid Motion Using SVD"
     https://igl.ethz.ch/projects/ARAP/svd_rot.pdf
@@ -70,64 +70,62 @@ def svd_rot_np(P, Q, w):
         R = V * D * U.T
     '''
     assert P.shape == Q.shape
-    d, n = P.shape
-    assert n == w.shape[0]
+    d, n = P.shape[-2:]
 
     # X,Y are n x k
-    P_ = np.dot(P, w) / np.sum(w)
-    Q_ = np.dot(Q, w) / np.sum(w)
-    X = P - P_
-    Y = Q - Q_
+    P_ = np.sum(P, axis=-1) / n
+    Q_ = np.sum(Q, axis=-1) / n
+    X = P - P_[:, :, None]
+    Y = Q - Q_[:, :, None]
+    Yt = Y.transpose(0, 2, 1)
 
     # S is n x n
-    W = np.diag(w.reshape(-1))
-    S = np.matmul(np.matmul(X, W), Y.T)
+    S = X @ Yt
 
     # U, V are n x m
     U, _, V_t = np.linalg.svd(S)
-    V = V_t.T
-    Ut = U.T
+    V = V_t.transpose(0, 2, 1)
+    Ut = U.transpose(0, 2, 1)
 
-    det = np.linalg.det(V*Ut)
-    Ut *= det
+    det = np.linalg.det(V @ Ut)
+    Ut[:, -1, :] *= det.reshape((-1, 1))
 
     # R is n x n
-    R = np.matmul(V, Ut)
+    R = V @ Ut
 
     # t is n x k
-    t = Q_ - np.matmul(R, P_)
+    t = Q_.reshape((-1, d, 1)) - R @ P_.reshape((-1, d, 1))
 
     return R, t
 
 
-def svd_rot_torch(P, Q, w):
+def svd_rot_torch(P, Q):
     assert P.shape == Q.shape
-    d, n = P.shape
-    assert n == w.shape[0]
+    d, n = P.shape[-2:]
 
     # X,Y are n x k
-    P_ = torch.mm(P, w) / torch.sum(w)
-    Q_ = torch.mm(Q, w) / torch.sum(w)
-    X = P - P_
-    Y = Q - Q_
+    P_ = torch.sum(P, axis=-1) / n
+    Q_ = torch.sum(Q, axis=-1) / n
+    X = P - P_[:, :, None]
+    Y = Q - Q_[:, :, None]
+    Yt = Y.permute(0, 2, 1)
 
     # S is n x n
-    W = torch.diag(w.reshape(-1))
-    S = torch.matmul(np.matmul(X, W), Y.T)
+    S = torch.matmul(X, Yt)
 
     # U, V are n x m
-    U, _, V_t = torch.svd(S)
-    V = V_t.T
-    Ut = U.T
+    U, _, V = torch.svd(S)
+    # V = V_t.permute(0, 2, 1)
+    Ut = U.permute(0, 2, 1)
 
-    det = torch.det(V*Ut)
-    Ut[-1] *= det
+    det = torch.det(torch.matmul(V, Ut))
+    Ut[:, -1, :] *= det.view(-1, 1)
 
     # R is n x n
     R = torch.matmul(V, Ut)
 
     # t is n x k
-    t = Q_ - torch.matmul(R, P_)
+    t = Q_.view(-1, d, 1) - torch.matmul(R, P_.view(-1, d, 1))
 
     return R, t
 
@@ -232,6 +230,9 @@ def test_lbs():
     w = np.random.rand(m, j)
     Z = np.random.rand(n, m, j, 3)
     Y = np.random.rand(n, j, 3, 4)
+    X_ = LBS_np(w, Z, Y)
+    X_ = torch.Tensor(X_)
+    print(X_.shape)
 
     # w = np.ones((m, j))
     # Z = np.ones((n, m, j, 3))*15.4
@@ -240,42 +241,68 @@ def test_lbs():
     # Z = np.arange(n*m*j*3).reshape((n, m, j, 3))
     # Y = np.arange(n*j*12).reshape((n, j, 3, 4))
 
-
     w = torch.Tensor(w)
     Z = torch.Tensor(Z)
     Y = torch.Tensor(Y)
-    # X = LBS_np(w, Z, Y)
     X = LBS_torch(w, Z, Y)
     print(X.shape)
+    diff = torch.abs(X_ - X).sum().data
+    print(torch.max(torch.abs(X_ - X)))
+    print(diff)
 
 
 def test_svd():
     d = 3
     n = 20
+    m = 100
 
-    w = np.random.rand(n, 1)
-    P = np.random.rand(d, n)
-    Q = np.random.rand(d, n)
+    # w = np.random.rand(m, n, 1)
+    P = np.random.rand(m, d, n)
+    Q = np.random.rand(m, d, n)
+    R_, t_ = svd_rot_np(P, Q)
+    R_ = torch.Tensor(R_)
+    t_ = torch.Tensor(t_)
+    print(R_.shape)
+    print(t_.shape)
 
-    w = torch.Tensor(w)
+    # w = torch.Tensor(w)
     P = torch.Tensor(P)
     Q = torch.Tensor(Q)
-    # R, t = svd_rot_np(P, Q, w)
-    R, t = svd_rot_torch(P, Q, w)
+    R, t = svd_rot_torch(P, Q)
+    # R = R.cpu().detach().numpy()
+    # t = t.cpu().detach().numpy()
     print(R.shape)
     print(t.shape)
+    diff_r = torch.abs(R_ - R).sum().data
+    diff_t = torch.abs(t_ - t).sum().data
+    print(torch.max(torch.abs(R_ - R)))
+    print(torch.max(torch.abs(t_ - t)))
+    print(diff_r, diff_t)
 
 
 def test_corrupt():
     n = 20
     m = 31
     X = np.random.rand(n, m, 3)
-    # X_hat = corrupt_np(X)
+    X_hat_np = corrupt_np(X)
+    X_hat_np = torch.Tensor(X_hat_np)
+    print(X_hat_np.shape)
     X = torch.Tensor(X)
     X_hat = corrupt_torch(X)
     print(X_hat.shape)
+    diff = torch.abs(X_hat - X_hat_np).sum().data
+    print(torch.max(torch.abs(X_hat - X_hat_np)))
+    print(diff)
 
+
+def test_baha():
+    Z = get_Z() # n x m x j x 3
+    X = get_X() # n x m x 3
+    X = X.transpose(0, 2, 1)
+
+    pass
 
 if __name__ == "__main__":
     # test_lbs()
     test_svd()
+    # test_corrupt()
