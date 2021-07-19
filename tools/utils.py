@@ -70,12 +70,12 @@ def svd_rot_np(P, Q, w):
         R = V * D * U.T
     '''
     assert P.shape == Q.shape
-    n, k = P.shape
-    assert k == w.shape[0]
+    d, n = P.shape
+    assert n == w.shape[0]
 
     # X,Y are n x k
     P_ = np.dot(P, w) / np.sum(w)
-    Q_ = np.dot(P, w) / np.sum(w)
+    Q_ = np.dot(Q, w) / np.sum(w)
     X = P - P_
     Y = Q - Q_
 
@@ -102,12 +102,12 @@ def svd_rot_np(P, Q, w):
 
 def svd_rot_torch(P, Q, w):
     assert P.shape == Q.shape
-    n, k = P.shape
-    assert k == w.shape[0]
+    d, n = P.shape
+    assert n == w.shape[0]
 
     # X,Y are n x k
     P_ = torch.mm(P, w) / torch.sum(w)
-    Q_ = torch.mm(P, w) / torch.sum(w)
+    Q_ = torch.mm(Q, w) / torch.sum(w)
     X = P - P_
     Y = Q - Q_
 
@@ -250,12 +250,12 @@ def test_lbs():
 
 
 def test_svd():
+    d = 3
     n = 20
-    k = 31
 
-    w = np.random.rand(k, 1)
-    P = np.random.rand(n, k)
-    Q = np.random.rand(n, k)
+    w = np.random.rand(n, 1)
+    P = np.random.rand(d, n)
+    Q = np.random.rand(d, n)
 
     w = torch.Tensor(w)
     P = torch.Tensor(P)
