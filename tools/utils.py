@@ -318,13 +318,6 @@ def test_corrupt():
     print(diff)
 
 
-def test_baha():
-    Z = get_Z() # n x m x j x 3
-    X = get_X() # n x m x 3
-    X = X.transpose(0, 2, 1)
-
-    pass
-
 if __name__ == "__main__":
     # test_lbs()
     test_svd()
