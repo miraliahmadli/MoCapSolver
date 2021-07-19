@@ -1,8 +1,12 @@
 from pathlib import Path
 import pandas as pd
+import ezc3d
 
 # Issues with the number of markers
 exclude = ['103_05', '93_05', '87_02', '89_04', '89_05']
+
+def get_fps(c3d_file):
+    return ezc3d.c3d(str(c3d_file))['header']['points']['frame_rate']
 
 def main():
     csv_filename = 'meta_data.csv'
@@ -26,8 +30,10 @@ def main():
     df.drop(df[df['c3d_path'].map(lambda x: not x.exists())].index, inplace = True)
     df.drop(df[df['c3d_path'].map(lambda x: x.stem in exclude)].index, inplace = True)
     df['motion_npy_path'] = df['amc_path'].map(lambda x: BASE_DIR / 'asfamc_npy' / 'subjects' / x.parent.stem / (x.stem + '.npy'))
+    df['marker_npy_path'] = df['c3d_path'].map(lambda x: BASE_DIR / 'c3d_npy' / 'subjects' / x.parent.stem / (x.stem + '.npy'))
     df['subject'] = df['amc_path'].map(lambda x: x.parent.stem)
     df['activity'] = df['amc_path'].map(lambda x: x.stem.split('_')[-1].lower())
+    df['frame_rate'] = df['c3d_path'].map(lambda x: get_fps(x))
     df['avg_bone'] = df['asf_path'].map(lambda x: avg_bone[x])
 
     df.to_csv(BASE_DIR / csv_filename)
