@@ -14,7 +14,7 @@ RUN curl -o ~/miniconda.sh https://repo.anaconda.com/miniconda/Miniconda3-latest
     && /opt/conda/bin/conda install -y python=3.8 \
     && /opt/conda/bin/conda install -y numpy jupyter matplotlib pandas tqdm \
     && /opt/conda/bin/conda install -y pytorch==1.7.1 torchvision==0.8.2 cudatoolkit=10.2 -c pytorch -c nvidia\
-    && /opt/conda/bin/conda install -y -c conda-forge ezc3d \
+    && /opt/conda/bin/conda install -y -c conda-forge ezc3d multiprocess \
     && /opt/conda/bin/conda clean -ya
 
 ENV PATH /opt/conda/bin:$PATH

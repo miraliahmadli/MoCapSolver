@@ -2,6 +2,29 @@ import torch
 import numpy as np
 
 
+main_labels =\
+        ['C7', 'CLAV', 'LANK', 'LBHD', 'LBWT', 'LELB', 'LFHD', 'LFIN', 
+        'LFRM', 'LFWT', 'LHEE', 'LKNE', 'LMT5', 'LSHN', 'LSHO', 'LTHI', 
+        'LTOE', 'LUPA', 'LWRA', 'LWRB', 'RANK', 'RBAC', 'RBHD', 'RBWT', 
+        'RELB', 'RFHD', 'RFIN', 'RFRM', 'RFWT', 'RHEE', 'RKNE', 'RMT5', 
+        'RSHN', 'RSHO', 'RTHI', 'RTOE', 'RUPA', 'RWRA', 'RWRB', 'STRN', 'T10']
+
+
+def weight_assign(joint_to_marker_file, num_marker=41, num_joints=31):
+    joint_to_marker = []
+    with open(joint_to_marker_file, "r") as f:
+        for l in f.readlines():
+            splitted = l.split()[1:]
+            joint_to_marker.append(splitted)
+
+    w = np.zeros((num_joints, num_marker))
+    for i, markers in enumerate(joint_to_marker):
+        for m in markers:
+            w[i, main_labels.index(m)] = 1
+
+    return w
+
+
 def LBS_np(w, Z, Y):
     '''
     Linear Blend Skinning function

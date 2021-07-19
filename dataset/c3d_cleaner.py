@@ -1,5 +1,7 @@
 import os
 from random import randint
+
+import numpy as np
 import ezc3d
 from tqdm import tqdm
 import multiprocess
@@ -129,7 +131,7 @@ def clean_markers(c3d_file="", c3d=None, out_path="", save=True):
         pred[idx] = True
         duplicates.pop(pick)
 
-        for _, _, l in duplicates:
+        for _, l, _ in duplicates:
             labels_to_remove.append(l)
 
     for label in labels_to_remove:
@@ -143,8 +145,7 @@ def clean_markers(c3d_file="", c3d=None, out_path="", save=True):
     c['data']['points'] = c['data']['points'][:, indices, :]
 
     if save:
-        del c['data']['meta_points']
-        c.write(out_path)
+        np.save(out_path, c['data']['points'])
 
 
 def clean_all(save_dir):
@@ -180,7 +181,7 @@ def clean_all(save_dir):
         pool.map(parallel_fn, c3d_folders)
 
 
-def main(data_dir="dataset/clean_c3d/subjects/"):
+def main(data_dir="dataset/c3d_npy/subjects/"):
     dir_split = data_dir.split("/")
     if not os.path.exists(dir_split[0] + "/" + dir_split[1]):
         os.mkdir(dir_split[0] + "/" + dir_split[1])
