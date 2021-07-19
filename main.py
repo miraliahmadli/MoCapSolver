@@ -30,7 +30,7 @@ def read_cfg(cfg_file):
 def main():
     args = parse_arguments()
     cfg = read_cfg(args.config)
-    agent = TWAgent(cfg)
+    agent = Agent(cfg)
     if args.mode == 'train':
         agent.train()
     elif args.mode == "test":
