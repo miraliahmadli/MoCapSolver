@@ -75,7 +75,7 @@ def clean_XYZ(X, Y, avg_bone, mm_conv = 0.056444):
     return X, Y, Z
 
 
-def LBS_np(w, Z, Y):
+def LBS_np(w, Y, Z):
     '''
     Linear Blend Skinning function
 
@@ -107,7 +107,7 @@ def LBS_np(w, Z, Y):
     return X
 
 
-def LBS_torch(w, Z, Y):
+def LBS_torch(w, Y, Z):
     m, j = w.shape
     n = Z.shape[0]
 
@@ -303,7 +303,7 @@ def test_lbs():
     w = np.random.rand(m, j)
     Z = np.random.rand(n, m, j, 3)
     Y = np.random.rand(n, j, 3, 4)
-    X_ = LBS_np(w, Z, Y)
+    X_ = LBS_np(w, Y, Z)
     X_ = torch.Tensor(X_)
     print(X_.shape)
 
@@ -317,7 +317,7 @@ def test_lbs():
     w = torch.Tensor(w)
     Z = torch.Tensor(Z)
     Y = torch.Tensor(Y)
-    X = LBS_torch(w, Z, Y)
+    X = LBS_torch(w, Y, Z)
     print(X.shape)
     diff = torch.abs(X_ - X).sum().data
     print(torch.max(torch.abs(X_ - X)))
