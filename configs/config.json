@@ -1,12 +1,12 @@
 {
-    "train_datadir": "sample/",
-    "train_filenames": "sample/sample.txt",
+    "train_datadir": "dataset/c3d_npy",
+    "train_filenames": "dataset/meta_data.csv",
     
-    "val_datadir": "sample/",
-    "var_filenames": "sample/sample.txt",
+    "val_datadir": "dataset/c3d_npy",
+    "var_filenames": "dataset/meta_data.csv",
     
-    "test_datadir": "sample/",
-    "test_dir": "sample/sample.txt",
+    "test_datadir": "dataset/c3d_npy",
+    "test_dir": "dataset/meta_data.csv",
     
     "model_dir": "1/model.pth",
 
@@ -15,25 +15,33 @@
     
     "epochs": 100,
     "batch_size": 128,
+    "num_markers": 41,
+    "num_joints": 31,
 
     "model":{
         "available": ["baseline", "least_square", "modified_baseline", "gnn"],
         "used": "baseline",
         "baseline": {
-            "hidden_size":2048
+            "hidden_size":2048,
+            "num_layers": 5,
+            "use_svd": false
         }
     },
 
     "use_gpu":true,
 
     "optimizer":{
-        "available": ["SGD", "Adam"],
-        "used": "SGD",
+        "available": ["SGD", "Adam", "AmsGrad"],
+        "used": "AmsGrad",
         "SGD": {
             "lr": 0.001
         },
         "Adam": {
             "lr": 0.001
+        },
+        "AmsGrad": {
+            "lr": 0.01,
+            "weight_decay": 0.01
         }
     }
 }

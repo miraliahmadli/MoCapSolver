@@ -10,13 +10,30 @@ from torch.utils.data import DataLoader
 from dataset import MoCap, collate_fn
 from models.baseline import Baseline
 
+
 class Agent:
     def __init__(self, cfg):
         self.cfg = cfg
         self.checkpoint_dir = cfg.model_dir
 
+        self.model = None
+
     def build_model(self):
-        self
+        num_markers = self.cfg.num_markers
+        num_joints = self.cfg.num_joints
+
+        used = self.cfg.model.used.lower()
+        if used == "baseline":
+            hidden_size = self.cfg.model.baseline.hidden_size
+            use_svd = self.cfg.model.baseline.use_svd
+            num_layers = self.cfg.model.baseline.num_layers
+            
+            self.model = Baseline(num_markers, num_joints, hidden_size, num_layers, use_svd)
+        elif used == "least_square":
+            # TODO: train loop for LS problem
+            self.model = None
+        else:
+            raise NotImplementedError
 
     def load_data(self):
         self.train_dataset = MoCap(data_dir=self.cfg.train_datadir , fnames=self.cfg.train_filenames)
@@ -72,6 +89,9 @@ class Agent:
             return torch.optim.Adam(self.model.parameters(), lr=self.cfg.optimizer.Adam.lr)
         elif optimizer == "sgd":
             return torch.optim.Adam(self.model.parameters(), lr=self.cfg.optimizer.SGD.lr)
+        elif optimizer == "amsgrad":
+            return torch.optim.AdamW([self.model.parameters(), lr=self.cfg.optimizer.AmsGrad.lr, 
+                                    weight_decay=self.cfg.optimizer.AmsGrad.weight_decay, amsgrad=True)
 
     def build_loss_function(self):
         return nn.L1Loss(size_average=None, reduce=None, reduction='mean')
