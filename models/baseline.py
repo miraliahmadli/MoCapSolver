@@ -38,7 +38,8 @@ class Baseline(nn.Module):
         self.relu = nn.ReLU()
         self.last_layer = nn.Linear(hidden_size, self.output_size)
 
-    def forward(self, x):
+    def forward(self, X, Z):
+        x = torch.cat((X[..., None], Z[..., None])).view(-1, self.input_size)
         x = self.first_layer(x)
         x = self.skip_block(x)
         x = self.relu(x)
@@ -61,9 +62,10 @@ def test():
 
     model = Baseline(num_markers, num_joints, hidden_size, 5)
     print(model)
-    x = torch.randn(num_pose, num_markers*3*2)
+    x = torch.randn(num_pose, num_markers, 3)
+    z = torch.randn(num_pose, num_markers, 3)
 
-    x_out = model(x)
+    x_out = model(x, z)
     print(x_out.shape)
 
 if __name__ == "__main__":
