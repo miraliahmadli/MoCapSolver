@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-from collections import OrderedDict
 
 from tools.utils import symmetric_orthogonalization
 

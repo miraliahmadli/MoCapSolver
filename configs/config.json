@@ -31,13 +31,17 @@
     "use_gpu":true,
 
     "optimizer":{
-        "available": ["SGD", "Adam"],
-        "used": "SGD",
+        "available": ["SGD", "Adam", "AmsGrad"],
+        "used": "AmsGrad",
         "SGD": {
             "lr": 0.001
         },
         "Adam": {
             "lr": 0.001
+        },
+        "AmsGrad": {
+            "lr": 0.01,
+            "weight_decay": 0.01
         }
     }
 }

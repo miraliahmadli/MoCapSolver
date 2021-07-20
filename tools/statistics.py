@@ -33,8 +33,8 @@ def get_stat_X(X):
 def get_stat_Z_preweighted(Z):
     '''
     Args:
-        Z : preweighted local offsets
-            n x m x 3
+        Z_hat : preweighted local offsets
+                n x m x 3
     Returns:
         Z_mu : mean, m x 3
         Z_std : standard deviation, m x 3

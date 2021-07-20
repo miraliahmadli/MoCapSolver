@@ -10,6 +10,7 @@ from torch.utils.data import DataLoader
 from dataset import MoCap, collate_fn
 from models.baseline import Baseline
 
+
 class Agent:
     def __init__(self, cfg):
         self.cfg = cfg
@@ -33,7 +34,6 @@ class Agent:
             self.model = None
         else:
             raise NotImplementedError
-
 
     def load_data(self):
         self.train_dataset = MoCap(data_dir=self.cfg.train_datadir , fnames=self.cfg.train_filenames)
@@ -89,6 +89,9 @@ class Agent:
             return torch.optim.Adam(self.model.parameters(), lr=self.cfg.optimizer.Adam.lr)
         elif optimizer == "sgd":
             return torch.optim.Adam(self.model.parameters(), lr=self.cfg.optimizer.SGD.lr)
+        elif optimizer == "amsgrad":
+            return torch.optim.AdamW([self.model.parameters(), lr=self.cfg.optimizer.AmsGrad.lr, 
+                                    weight_decay=self.cfg.optimizer.AmsGrad.weight_decay, amsgrad=True)
 
     def build_loss_function(self):
         return nn.L1Loss(size_average=None, reduce=None, reduction='mean')
