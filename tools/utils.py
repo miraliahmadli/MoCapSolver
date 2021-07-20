@@ -29,7 +29,7 @@ def LBS_np(w, Z, Y):
     '''
     Linear Blend Skinning function
 
-    Parameters:
+    Args:
         w: weights associated with marker offsets, dim: (m, j)
         Z: local offsets, dim: (n, m, j, 3)
         Y: rotation + translation matrices, dim: (n, j, 3, 4)
@@ -177,7 +177,7 @@ def corrupt_np(X, sigma_occ=0.1, sigma_shift=0.1, beta=50):
     to randomly occlude markers (placing them at zero) or shift markers
     (adding some offset to their position).
 
-    Parameters:
+    Args:
         X: global marker positions, dim: (n x m x 3)
         sigma_occ: variance for occlusion distribution
                    adjusts the probability of a marker being occluded
