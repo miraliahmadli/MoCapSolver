@@ -13,6 +13,7 @@
     "train_sum": "1/tensorboard/train",
     "val_sum": "1/tensorboard/val",
     
+    "use_gpu":true,
     "epochs": 100,
     "batch_size": 128,
     "num_markers": 41,
@@ -28,7 +29,9 @@
         }
     },
 
-    "use_gpu":true,
+    "loss": {
+        "gamma": 0.01
+    },
 
     "optimizer":{
         "available": ["SGD", "Adam", "AmsGrad"],
