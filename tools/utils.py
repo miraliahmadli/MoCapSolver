@@ -17,12 +17,62 @@ def weight_assign(joint_to_marker_file, num_marker=41, num_joints=31):
             splitted = l.split()[1:]
             joint_to_marker.append(splitted)
 
-    w = np.zeros((num_joints, num_marker))
+    w = np.zeros((num_marker, num_joints))
     for i, markers in enumerate(joint_to_marker):
         for m in markers:
-            w[i, main_labels.index(m)] = 1
+            w[main_labels.index(m), i] = 1
 
     return w
+
+
+def get_Z(X, Y):
+    '''
+    Local offset computation function
+
+    Parameters:
+        X: global marker positions, dim: (n, m, 3)
+        Y: rotation + translation matrices, dim: (n, j, 3, 4)
+
+    Return:
+        Z: local offsets, dim: (n, m, j, 3)
+    '''
+    Y_rot = Y[..., : 3] # n x j x 3 x 3
+    Y_tr = Y[..., 3: ] # n x j x 3 x 1
+    Y_rot_inv = Y_rot.transpose(0, 1, 3, 2) # n x j x 3 x 3
+    Y_tr_inv = -Y_tr # n x j x 3 x 1
+
+    Y_rot_x_tr = np.matmul(Y_rot_inv, Y_tr_inv) # n x j x 3 x 1
+    Y_inv = np.concatenate([Y_rot_inv, Y_rot_x_tr], axis = 3) # n x j x 3 x 4
+
+    X_expand = np.expand_dims(X, axis = 3) # n x m x 3 x 1
+
+    Y_inv_rot = np.expand_dims(Y_inv[..., : 3], 2) # n x m x 1 x 3 x 3
+    Y_inv_tr = np.expand_dims(Y_inv[..., 3: ], 2) # n x m x 1 x 3 x 1
+
+    Z = np.matmul(Y_inv_rot, np.expand_dims(X_expand, 1)) + Y_inv_tr
+    Z = Z.transpose((0, 2, 1, 3, 4))
+    Z = np.squeeze(Z)
+    return Z
+
+
+def clean_XYZ(X, Y, avg_bone, mm_conv = 0.056444):
+    nans = np.isnan(X)[0, :, :].transpose()
+    nans_float = 1 - nans.astype(float)
+    nans_expand = np.expand_dims(nans_float, 2)
+    nans_expand2 = np.expand_dims(nans_expand, 3)
+    
+    X = np.nan_to_num(X)
+    X = X.transpose(2, 1, 0)
+    X *= nans_expand
+    X[:, :, :3] *= (1 / avg_bone)
+    X = X[..., 0: 3]
+
+    Y[..., 3] *= (1 / avg_bone) * mm_conv
+    
+    Z = get_Z(X, Y)
+    Z *= nans_expand2
+
+    return X, Y, Z
 
 
 def LBS_np(w, Z, Y):
