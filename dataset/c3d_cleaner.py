@@ -157,8 +157,8 @@ def clean_all(save_dir):
 
         tqdm_batch = tqdm(total=len(c3d_files1), dynamic_ncols=True)
         for i, (fn1, fn2) in enumerate(zip(c3d_files1, c3d_files2)):
-            out_path1 = fn1.replace(c3d_dir,save_dir)
-            out_path2 = fn2.replace(c3d_dir,save_dir)
+            out_path1 = fn1.replace(c3d_dir,save_dir).replace(".c3d",".npy")
+            out_path2 = fn2.replace(c3d_dir,save_dir).replace(".c3d",".npy")
             remove_one_subject((fn1, fn2), subjects, (out_path1, out_path2))
 
             tqdm_update = f"iteration={i},files={fn1}, {fn2}"
@@ -173,7 +173,7 @@ def clean_all(save_dir):
         c3d_files = [os.path.join(in_path, fn) for fn in sorted(os.listdir(in_path))]
 
         for i, fn in enumerate(c3d_files):
-            out_path = fn.replace(c3d_dir,save_dir)
+            out_path = fn.replace(c3d_dir,save_dir).replace(".c3d",".npy")
             clean_markers(c3d_file=fn, out_path=out_path)
 
         print(f'Done: {folder}')
