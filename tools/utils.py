@@ -219,14 +219,14 @@ def svd_rot_np(P, Q):
         t = q_mean - R*p_mean
         R = V * D * U.T
     '''
-    assert P.shape == Q.shape
+    assert P.shape[-2:] == Q.shape[-2:]
     d, n = P.shape[-2:]
 
     # X,Y are n x k
     P_ = np.sum(P, axis=-1) / n
     Q_ = np.sum(Q, axis=-1) / n
-    X = P - P_[:, :, None]
-    Y = Q - Q_[:, :, None]
+    X = P - P_[..., None]
+    Y = Q - Q_[..., None]
     Yt = Y.transpose(0, 2, 1)
 
     # S is n x n
@@ -250,14 +250,14 @@ def svd_rot_np(P, Q):
 
 
 def svd_rot_torch(P, Q):
-    assert P.shape == Q.shape
+    assert P.shape[-2:] == Q.shape[-2:]
     d, n = P.shape[-2:]
 
     # X,Y are n x k
     P_ = torch.sum(P, axis=-1) / n
     Q_ = torch.sum(Q, axis=-1) / n
-    X = P - P_[:, :, None]
-    Y = Q - Q_[:, :, None]
+    X = P - P_[..., None]
+    Y = Q - Q_[..., None]
     Yt = Y.permute(0, 2, 1)
 
     # S is n x n

@@ -177,16 +177,14 @@ def clean_all(save_dir):
             clean_markers(c3d_file=fn, out_path=out_path)
 
         print(f'Done: {folder}')
+
     with multiprocess.Pool(processes = os.cpu_count()) as pool:
         pool.map(parallel_fn, c3d_folders)
 
 
 def main(data_dir="dataset/c3d_npy/subjects/"):
-    dir_split = data_dir.split("/")
-    if not os.path.exists(dir_split[0] + "/" + dir_split[1]):
-        os.mkdir(dir_split[0] + "/" + dir_split[1])
     if not os.path.exists(data_dir):
-        os.mkdir(data_dir)
+        os.makedirs(data_dir)
     for folder in c3d_folders:
         path = os.path.join(data_dir, folder)
         if not os.path.exists(path):
@@ -195,6 +193,7 @@ def main(data_dir="dataset/c3d_npy/subjects/"):
 
 
 if __name__ == "__main__":
+    # clean_markers("../01_02.c3d", save=False)
     main()
     # c3d_file = "../subjects/01/01_01.c3d"
     # c3d_file = "../subjects/02/02_04.c3d"
