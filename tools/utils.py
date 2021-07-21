@@ -9,6 +9,9 @@ main_labels =\
         'RELB', 'RFHD', 'RFIN', 'RFRM', 'RFWT', 'RHEE', 'RKNE', 'RMT5', 
         'RSHN', 'RSHO', 'RTHI', 'RTOE', 'RUPA', 'RWRA', 'RWRB', 'STRN', 'T10']
 
+local_frame_markers = [4, 9, 23, 28, 39, 40]
+local_frame_joint = 11
+
 
 def weight_assign(joint_to_marker_file, num_marker=41, num_joints=31):
     joint_to_marker = []
@@ -25,6 +28,43 @@ def weight_assign(joint_to_marker_file, num_marker=41, num_joints=31):
     return w
 
 
+def xform_to_mat44(X):
+    '''
+    Converts 3 x 4 rigidbody tranformations to 4 x 4
+
+    Parameters:
+        X: Rigidbody transformation matrix, dim: (..., 3, 4)
+
+    Return:
+        X_44: 4 x 4 rigidbody transformation matrix, dim: (..., 4, 4)
+    '''
+    af = np.array([0, 0, 0, 1]).reshape((1, 4))
+    bshape = X.shape[: -2] + af.shape
+    X_44 = np.concatenate([X, np.broadcast_to(af, bshape)], axis = -2)
+
+    return X_44
+
+
+def xform_inv(Y):
+    '''
+    Inverse of the rigidbody transformation
+
+    Parameters:
+        Y: Rigidbody transformation matrix, dim: (..., 3, 4)
+
+    Return:
+        Y_inv: Inverse of rigidbody transformation matrix, dim: (..., 3, 4)
+    '''
+    T, R = Y[..., 3: ], Y[..., :3]
+    R_inv = np.swapaxes(R, -1, -2)
+    T_inv = -T
+
+    R_x_T = np.matmul(R_inv, T_inv)
+    Y_inv = np.concatenate([R_inv, R_x_T], axis = -1)
+    
+    return Y_inv
+
+
 def get_Z(X, Y):
     '''
     Local offset computation function
@@ -36,15 +76,9 @@ def get_Z(X, Y):
     Return:
         Z: local offsets, dim: (n, m, j, 3)
     '''
-    Y_rot = Y[..., : 3] # n x j x 3 x 3
-    Y_tr = Y[..., 3: ] # n x j x 3 x 1
-    Y_rot_inv = Y_rot.transpose(0, 1, 3, 2) # n x j x 3 x 3
-    Y_tr_inv = -Y_tr # n x j x 3 x 1
+    Y_inv = xform_inv(Y) # n x j x 3 x 4
 
-    Y_rot_x_tr = np.matmul(Y_rot_inv, Y_tr_inv) # n x j x 3 x 1
-    Y_inv = np.concatenate([Y_rot_inv, Y_rot_x_tr], axis = 3) # n x j x 3 x 4
-
-    X_expand = np.expand_dims(X, axis = 3) # n x m x 3 x 1
+    X_expand = np.expand_dims(X, axis = -1) # n x m x 3 x 1
 
     Y_inv_rot = np.expand_dims(Y_inv[..., : 3], 2) # n x m x 1 x 3 x 3
     Y_inv_tr = np.expand_dims(Y_inv[..., 3: ], 2) # n x m x 1 x 3 x 1
@@ -55,24 +89,67 @@ def get_Z(X, Y):
     return Z
 
 
-def clean_XYZ(X, Y, avg_bone, mm_conv = 0.056444):
-    nans = np.isnan(X)[0, :, :].transpose()
+def clean_XYZ(X_read, Y_read, avg_bone, m_conv = 0.056444):
+    '''
+    Clean XYZ
+
+    Parameters:
+        X_read: global marker positions read from the npy, dim: (4, m, n)
+        Y: rotation + translation matrices read from the npy, dim: (n, j, 3, 4)
+
+    Return:
+        X: cleaned global marker positions, dim: (n, m, 3)
+        Y: cleaned rotation + translation matrices, dim: (n, j, 3, 4)
+        Z: local offsets, dim: (n, m, j, 3)
+    '''
+    nans = np.isnan(X_read)[0, :, :].transpose()
     nans_float = 1 - nans.astype(float)
     nans_expand = np.expand_dims(nans_float, 2)
     nans_expand2 = np.expand_dims(nans_expand, 3)
     
-    X = np.nan_to_num(X)
+    avg_bone_m = avg_bone * m_conv
+
+    X = np.nan_to_num(X_read)
     X = X.transpose(2, 1, 0)
     X *= nans_expand
-    X[:, :, :3] *= (1 / avg_bone)
-    X = X[..., 0: 3]
+    X = X[..., : 3]
+    X *= (1.0 / (avg_bone_m)) * 0.001
+    X = X[..., [1, 2, 0]]
 
-    Y[..., 3] *= (1 / avg_bone) * mm_conv
+    Y = Y_read
+    Y[..., 3] *= (1.0 / avg_bone)
     
     Z = get_Z(X, Y)
     Z *= nans_expand2
 
     return X, Y, Z
+
+
+def local_frame(X, Y):
+    '''
+    Local frame F calculation function
+    rot: Rotation of local_frame_joint
+    tr: Mean of translations of local_frame_markers
+
+    Parameters:
+        X: global marker positions, dim: (n, m, 3)
+        Y: rotation + translation matrices, dim: (n, j, 3, 4)
+
+    Return:
+        Y_local: Y fitted into local frame, dim: (n, j, 3, 4)
+    '''
+    X_tr = np.mean(X[:, local_frame_markers, :], axis = 1)
+    X_rot = Y[:, local_frame_joint, :, :3]
+
+    F = np.concatenate([X_rot, np.expand_dims(X_tr, 2)], axis = 2)
+
+    F_inv = xform_inv(F)
+    F_inv_expand = np.expand_dims(F_inv, 1)
+
+    Y_44 = xform_to_mat44(Y)
+    Y_local = np.matmul(F_inv_expand, Y_44)
+
+    return Y_local
 
 
 def LBS_np(w, Y, Z):
