@@ -17,7 +17,7 @@ class Agent:
         self.cfg = cfg
         self.checkpoint_dir = cfg.model_dir
         self.gamma = cfg.loss.gamma
-        self.lambda = cfg.lambda
+        self.user_weights = cfg.user_weights
 
         self.device = torch.device('cuda' if self.cfg.use_gpu and torch.cuda.is_available() else 'cpu')
         print(self.device)
@@ -97,7 +97,7 @@ class Agent:
             self.optimizer.zero_grad()
             Y_hat = self.model(X, Z)
 
-            loss = self.lambda * self.criterion(Y_hat, Y) + self.l2_regularization()
+            loss = self.user_weights * self.criterion(Y_hat, Y) + self.l2_regularization()
             loss.backward()
             self.optimizer.step()
 
@@ -128,7 +128,7 @@ class Agent:
             self.optimizer.zero_grad()
             Y_hat = self.model(X, Z)
 
-            l1_loss = self.lambda * self.criterion(Y_hat, Y)
+            l1_loss = self.user_weights * self.criterion(Y_hat, Y)
             l2_reg = self.l2_regularization()
             loss = l1_loss + l2_reg
             total_loss += loss.item()
@@ -167,7 +167,7 @@ class Agent:
             # do preprocessing and get corrupted X and preweighted Z
             Y_hat = self.model(X, Z)
 
-            l1_loss = self.lambda * self.criterion(Y_hat, Y)
+            l1_loss = self.user_weights * self.criterion(Y_hat, Y)
             l2_reg = self.l2_regularization()
             loss = l1_loss + l2_reg
             total_loss += loss.item()

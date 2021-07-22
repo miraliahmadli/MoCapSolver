@@ -18,6 +18,7 @@
     "batch_size": 128,
     "num_markers": 41,
     "num_joints": 31,
+    "user_weights": 1,
 
     "model":{
         "available": ["baseline", "least_square", "modified_baseline", "gnn"],

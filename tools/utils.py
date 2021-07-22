@@ -2,41 +2,15 @@ import torch
 import numpy as np
 
 
-main_labels =\
-        ['C7', 'CLAV', 'LANK', 'LBHD', 'LBWT', 'LELB', 'LFHD', 'LFIN', 
-        'LFRM', 'LFWT', 'LHEE', 'LKNE', 'LMT5', 'LSHN', 'LSHO', 'LTHI', 
-        'LTOE', 'LUPA', 'LWRA', 'LWRB', 'RANK', 'RBAC', 'RBHD', 'RBWT', 
-        'RELB', 'RFHD', 'RFIN', 'RFRM', 'RFWT', 'RHEE', 'RKNE', 'RMT5', 
-        'RSHN', 'RSHO', 'RTHI', 'RTOE', 'RUPA', 'RWRA', 'RWRB', 'STRN', 'T10']
-
-local_frame_markers = [4, 9, 23, 28, 39, 40]
-local_frame_joint = 11
-
-
-def weight_assign(joint_to_marker_file, num_marker=41, num_joints=31):
-    joint_to_marker = []
-    with open(joint_to_marker_file, "r") as f:
-        for l in f.readlines():
-            splitted = l.split()[1:]
-            joint_to_marker.append(splitted)
-
-    w = np.zeros((num_marker, num_joints))
-    for i, markers in enumerate(joint_to_marker):
-        for m in markers:
-            w[main_labels.index(m), i] = 1
-
-    return w
-
-
-def xform_to_mat44(X):
+def xform_to_mat44_np(X):
     '''
-    Converts 3 x 4 rigidbody tranformations to 4 x 4
+    Converts 3 x 4 rigid body tranformations to 4 x 4
 
     Parameters:
-        X: Rigidbody transformation matrix, dim: (..., 3, 4)
+        X: Rigid body transformation matrix, dim: (..., 3, 4)
 
     Return:
-        X_44: 4 x 4 rigidbody transformation matrix, dim: (..., 4, 4)
+        X_44: 4 x 4 rigid body transformation matrix, dim: (..., 4, 4)
     '''
     af = np.array([0, 0, 0, 1]).reshape((1, 4))
     bshape = X.shape[: -2] + af.shape
@@ -45,15 +19,24 @@ def xform_to_mat44(X):
     return X_44
 
 
-def xform_inv(Y):
+def xform_to_mat44_torch(X, device="cuda"):
+    shape = X.shape[: -2] + (1, 4)
+    affine = torch.zeros(shape).to(device)
+    affine[..., -1] = 1
+    X_44 = torch.cat((X, affine), axis = -2)
+
+    return X_44
+
+
+def xform_inv_np(Y):
     '''
-    Inverse of the rigidbody transformation
+    Inverse of the rigid body transformation
 
     Parameters:
-        Y: Rigidbody transformation matrix, dim: (..., 3, 4)
+        Y: Rigid body transformation matrix, dim: (..., 3, 4)
 
     Return:
-        Y_inv: Inverse of rigidbody transformation matrix, dim: (..., 3, 4)
+        Y_inv: Inverse of rigid body transformation matrix, dim: (..., 3, 4)
     '''
     T, R = Y[..., 3: ], Y[..., :3]
     R_inv = np.swapaxes(R, -1, -2)
@@ -65,92 +48,15 @@ def xform_inv(Y):
     return Y_inv
 
 
-def get_Z(X, Y):
-    '''
-    Local offset computation function
+def xform_inv_torch(Y):
+    T, R = Y[..., 3: ], Y[..., :3]
+    R_inv = R.transpose(-1, -2)
+    T_inv = -T
 
-    Parameters:
-        X: global marker positions, dim: (n, m, 3)
-        Y: rotation + translation matrices, dim: (n, j, 3, 4)
+    R_x_T = torch.matmul(R_inv, T_inv)
+    Y_inv = torch.cat((R_inv, R_x_T), axis = -1)
 
-    Return:
-        Z: local offsets, dim: (n, m, j, 3)
-    '''
-    Y_inv = xform_inv(Y) # n x j x 3 x 4
-
-    X_expand = np.expand_dims(X, axis = -1) # n x m x 3 x 1
-
-    Y_inv_rot = np.expand_dims(Y_inv[..., : 3], 2) # n x m x 1 x 3 x 3
-    Y_inv_tr = np.expand_dims(Y_inv[..., 3: ], 2) # n x m x 1 x 3 x 1
-
-    Z = np.matmul(Y_inv_rot, np.expand_dims(X_expand, 1)) + Y_inv_tr
-    Z = Z.transpose((0, 2, 1, 3, 4))
-    Z = np.squeeze(Z)
-    return Z
-
-
-def clean_XYZ(X_read, Y_read, avg_bone, m_conv = 0.056444):
-    '''
-    Clean XYZ
-
-    Parameters:
-        X_read: global marker positions read from the npy, dim: (4, m, n)
-        Y: rotation + translation matrices read from the npy, dim: (n, j, 3, 4)
-
-    Return:
-        X: cleaned global marker positions, dim: (n, m, 3)
-        Y: cleaned rotation + translation matrices, dim: (n, j, 3, 4)
-        Z: local offsets, dim: (n, m, j, 3)
-    '''
-    nans = np.isnan(X_read)[0, :, :].transpose()
-    nans_float = 1 - nans.astype(float)
-    nans_expand = np.expand_dims(nans_float, 2)
-    nans_expand2 = np.expand_dims(nans_expand, 3)
-    
-    avg_bone_m = avg_bone * m_conv
-
-    X = np.nan_to_num(X_read)
-    X = X.transpose(2, 1, 0)
-    X *= nans_expand
-    X = X[..., : 3]
-    X *= (1.0 / (avg_bone_m)) * 0.001
-    X = X[..., [1, 2, 0]]
-
-    Y = Y_read
-    Y[..., 3] *= (1.0 / avg_bone)
-    
-    Z = get_Z(X, Y)
-    Z *= nans_expand2
-
-    return X, Y, Z
-
-
-def local_frame(X, Y):
-    '''
-    Local frame F calculation function
-    rot: Rotation of local_frame_joint
-    tr: Mean of translations of local_frame_markers
-
-    Parameters:
-        X: global marker positions, dim: (n, m, 3)
-        Y: rotation + translation matrices, dim: (n, j, 3, 4)
-
-    Return:
-        F: Computed local frame, dim(n, 3, 4)
-        Y_local: Y fitted into local frame, dim: (n, j, 3, 4)
-    '''
-    X_tr = np.mean(X[:, local_frame_markers, :], axis = 1)
-    X_rot = Y[:, local_frame_joint, :, :3]
-
-    F = np.concatenate([X_rot, np.expand_dims(X_tr, 2)], axis = 2)
-
-    F_inv = xform_inv(F)
-    F_inv_expand = np.expand_dims(F_inv, 1)
-
-    Y_44 = xform_to_mat44(Y)
-    Y_local = np.matmul(F_inv_expand, Y_44)
-
-    return F, Y_local
+    return Y_inv
 
 
 def LBS_np(w, Y, Z):
