@@ -136,6 +136,7 @@ def local_frame(X, Y):
         Y: rotation + translation matrices, dim: (n, j, 3, 4)
 
     Return:
+        F: Computed local frame, dim(n, 3, 4)
         Y_local: Y fitted into local frame, dim: (n, j, 3, 4)
     '''
     X_tr = np.mean(X[:, local_frame_markers, :], axis = 1)
@@ -149,7 +150,7 @@ def local_frame(X, Y):
     Y_44 = xform_to_mat44(Y)
     Y_local = np.matmul(F_inv_expand, Y_44)
 
-    return Y_local
+    return F, Y_local
 
 
 def LBS_np(w, Y, Z):
@@ -298,7 +299,7 @@ def symmetric_orthogonalization(x):
   return r
 
 
-def corrupt_np(X, sigma_occ=0.1, sigma_shift=0.1, beta=50):
+def corrupt_np(X, sigma_occ=0.1, sigma_shift=0.1, beta=0.5):
     '''
     Given marker data X as input this algorithm is used
     to randomly occlude markers (placing them at zero) or shift markers
