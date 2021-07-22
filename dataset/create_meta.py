@@ -33,6 +33,7 @@ def main():
     df['marker_npy_path'] = df['c3d_path'].map(lambda x: BASE_DIR / 'c3d_npy' / 'subjects' / x.parent.stem / (x.stem + '.npy'))
     df['subject'] = df['amc_path'].map(lambda x: x.parent.stem)
     df['activity'] = df['amc_path'].map(lambda x: x.stem.split('_')[-1].lower())
+    df['file_stem'] = df['amc_path'].map(lambda x: x.stem)
     df['frame_rate'] = df['c3d_path'].map(lambda x: get_fps(x))
     df['avg_bone'] = df['asf_path'].map(lambda x: avg_bone[x])
 
