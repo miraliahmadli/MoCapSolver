@@ -13,7 +13,7 @@ def parse_arguments():
     parser.add_argument('-mode', type=str,
                          default="train", help="tarining or testing")
     parser.add_argument('-config', type=str,
-                         default="./config.json", 
+                         default="configs/config.json", 
                          help="path to the config file")
 
     args = parser.parse_args()
@@ -40,4 +40,12 @@ def main():
 
 
 if __name__ == "__main__":
-  main()
+    main()
+    # import numpy as np
+    # import torch
+    # from tools.preprocess import clean_XYZ_torch
+    # x = np.random.rand(4, 41, 1)
+    # y = np.random.rand(1, 31, 3, 4)
+    # x = torch.tensor(x)
+    # y = torch.tensor(y)
+    # x, y, z = clean_XYZ_torch(x, y, 2.5)

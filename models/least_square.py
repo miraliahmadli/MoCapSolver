@@ -23,7 +23,8 @@ class LS_solver(nn.Module):
     def forward(self, X, Z):
         Y_hat = torch.empty(self.output_size).to(torch.float32).to(self.device) # n x j x 3 x 4
         for i in range(self.num_joints):
-            markers = np.argwhere(self.w[:, i] == 1).reshape((-1))
+            # markers = np.argwhere(self.w[:, i] == 1).reshape((-1))
+            markers = (self.w[:, i] == 1).nonzero(as_tuple=False).view((-1))
             Z_ = Z[:, markers, i].permute(0, 2, 1) # n x 3 x m
             X_ = X[:, markers].permute(0, 2, 1) # n x 3 x m
             R, t = self.solver(Z_, X_) # n x 3 x 3, n x 3 x 1

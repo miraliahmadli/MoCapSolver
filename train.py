@@ -7,55 +7,69 @@ import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
 
-from dataset import MoCap, collate_fn
+from mocap_dataset import MoCap
 from models.baseline import Baseline
 from tools.utils import svd_rot_torch as svd_solver
+from tools.utils import LBS_torch as LBS
+from tools.utils import corrupt_torch as corrupt
+from tools.utils import preweighted_Z
+from tools.preprocess import weight_assign
+from tools.statistics import *
 
 
 class Agent:
     def __init__(self, cfg):
         self.cfg = cfg
         self.checkpoint_dir = cfg.model_dir
+
+        self.num_markers = cfg.num_markers
+        self.num_joints = cfg.num_joints
+        self.batch_size = cfg.batch_size
+
         self.gamma = cfg.loss.gamma
         self.user_weights = cfg.user_weights
+        self.w = weight_assign(cfg.joint_to_marker, cfg.num_markers, cfg.num_joints)
 
         self.device = torch.device('cuda' if self.cfg.use_gpu and torch.cuda.is_available() else 'cpu')
         print(self.device)
         if self.cfg.use_gpu and torch.cuda.is_available():
             print(torch.cuda.get_device_name(torch.cuda.current_device()))
+        self.w = self.w.to(self.device)
         self.model = None
 
     def build_model(self):
-        num_markers = self.cfg.num_markers
-        num_joints = self.cfg.num_joints
-
         used = self.cfg.model.used.lower()
         if used == "baseline":
             hidden_size = self.cfg.model.baseline.hidden_size
             use_svd = self.cfg.model.baseline.use_svd
             num_layers = self.cfg.model.baseline.num_layers
             
-            self.model = Baseline(num_markers, num_joints, hidden_size, num_layers, use_svd)
+            self.model = Baseline(self.num_markers, self.num_joints, hidden_size, num_layers, use_svd)
         elif used == "least_square":
             # TODO: train loop for LS problem
             self.model = None
         else:
             raise NotImplementedError
+        self.model.to(self.device)
 
     def load_data(self):
-        self.train_dataset = MoCap(data_dir=self.cfg.train_datadir , fnames=self.cfg.train_filenames)
-        self.val_dataset = MoCap(data_dir=self.cfg.val_datadir , fnames=self.cfg.var_filenames)
+        self.train_dataset = MoCap(csv_file=self.cfg.csv_file , fnames=self.cfg.train_filenames,\
+                                num_marker=self.num_markers, num_joint=self.num_joints)
+        self.val_dataset = MoCap(csv_file=self.cfg.csv_file , fnames=self.cfg.var_filenames,\
+                                num_marker=self.num_markers, num_joint=self.num_joints)
 
         self.train_steps = len(self.train_dataset) // self.cfg.batch_size
         self.val_steps = len(self.val_dataset) // self.cfg.batch_size
 
-        self.train_data_loader = DataLoader(self.train_dataset, batch_size=self.cfg.batch_size,\
-                                            collate_fn=collate_fn, shuffle=True, num_workers=2)
-        self.val_data_loader = DataLoader(self.val_dataset, batch_size=self.cfg.batch_size,\
-                                            collate_fn=collate_fn, shuffle=False, num_workers=2)
+        self.train_data_loader = DataLoader(self.train_dataset, batch_size=self.batch_size,\
+                                            shuffle=True, num_workers=8)
+        self.val_data_loader = DataLoader(self.val_dataset, batch_size=self.batch_size,\
+                                            shuffle=False, num_workers=8)
 
     def train(self):
         self.best_loss = float("inf")
+        val_loss_f = []
+        train_loss_f =[]
 
         self.build_model()
         self.criterion = self.build_loss_function()
@@ -72,32 +86,51 @@ class Agent:
         self.val_writer = SummaryWriter(self.cfg.val_sum, "Val")
 
         for epoch in range(last_epoch + 1, epochs + 1):
-            self.train_per_epoch(epoch)
+            _, msg = self.train_per_epoch(epoch)
+            train_loss_f.append(msg)
             if epoch > 1:
-                loss = self.val_per_epoch(epoch)
+                loss, msg = self.val_per_epoch(epoch)
+                val_loss_f.append(msg)
                 if loss < self.best_loss:
                     self.best_loss = loss
                     self.save_model(epoch)
+
+        with open("train_loss.txt", "w+") as f:
+            for msg in train_loss_f:
+                f.write(msg + "\n")
+        with open("val_loss.txt", "w+") as f:
+            for msg in val_loss_f:
+                f.write(msg + "\n")
 
         self.train_writer.close()
         self.val_writer.close()
 
     def train_per_epoch(self, epoch):
-        tqdm_batch = tqdm(total=self.train_steps, dynamic_ncols=True)
+        tqdm_batch = tqdm(total=self.train_steps, dynamic_ncols=True) 
         total_loss = 0
 
         self.model.train()
-        for batch_idx, (X, Y, Z, F) in enumerate(self.train_data_loader):
-            X, Y, Z, F = X.to(torch.float32), Y.to(torch.float32),\
-                        Z.to(torch.float32), F.to(torch.float32)
-            X, Y, Z, F = X.to(self.device), Y.to(self.device), Z.to(self.device), F.to(self.device)
+        for batch_idx, (Y, Z, _) in enumerate(self.train_data_loader):
+            bs = Y.shape[0]
+            Y, Z = Y.to(torch.float32), Z.to(torch.float32)
+            Y, Z = Y.to(self.device), Z.to(self.device)
 
-            # TODO:
-            # do preprocessing and get corrupted X and preweighted Z
+            z_mu, z_cov = get_stat_Z(Z)
+            # Z_sample = sample_Z(z_mu, z_cov, self.batch_size).view(-1, self.num_markers, self.num_joints, 3)
+
+            X = LBS(self.w, Y, Z)
+            X = corrupt(X)
+            Z_pw = preweighted_Z(self.w, Z)
+
+            X = normalize_X(X)
+            Z = normalize_Z_pw(Z_pw)
+
             self.optimizer.zero_grad()
-            Y_hat = self.model(X, Z)
+            Y_hat = self.model(X, Z_pw).view(bs, self.num_joints, 3, 4)
 
-            loss = self.user_weights * self.criterion(Y_hat, Y) + self.l2_regularization()
+            l1_loss = self.user_weights * self.criterion(Y_hat, Y)
+            l2_reg = self.l2_regularization()
+            loss = l1_loss + l2_reg
             loss.backward()
             self.optimizer.step()
 
@@ -108,25 +141,32 @@ class Agent:
             tqdm_batch.update()
 
         self.train_writer.add_scalar('Loss', total_loss, epoch)
-        print("epoch", epoch, "loss:", total_loss)
+        message = f"epoch: {epoch}, loss: {total_loss}"
 
         tqdm_batch.close()
-        return total_loss
+        return total_loss, message
 
     def val_per_epoch(self, epoch):
         tqdm_batch = tqdm(total=self.val_steps, dynamic_ncols=True)
         total_loss = 0
 
         self.model.eval()
-        for batch_idx, (X, Y, Z, F) in enumerate(self.val_data_loader):
-            X, Y, Z, F = X.to(torch.float32), Y.to(torch.float32),\
-                        Z.to(torch.float32), F.to(torch.float32)
-            X, Y, Z, F = X.to(self.device), Y.to(self.device), Z.to(self.device), F.to(self.device)
+        for batch_idx, (Y, Z, _) in enumerate(self.val_data_loader):
+            bs = Y.shape[0]
+            Y, Z = Y.to(torch.float32).to(self.device), Z.to(torch.float32).to(self.device)
 
-            # TODO:
-            # do preprocessing and get corrupted X and preweighted Z
-            self.optimizer.zero_grad()
-            Y_hat = self.model(X, Z)
+            z_mu, z_cov = get_stat_Z(Z)
+            # Z_sample = sample_Z(z_mu, z_cov, self.batch_size).view(-1, self.num_markers, self.num_joints, 3)
+
+            X = LBS(self.w, Y, Z)
+            X = corrupt(X)
+            Z_pw = preweighted_Z(self.w, Z)
+
+            X = normalize_X(X)
+            Z = normalize_Z_pw(Z_pw)
+
+            Y_hat = self.model(X, Z).view(bs, self.num_joints, 3, 4)
+            Y_hat = denormalize_Y(Y_hat)
 
             l1_loss = self.user_weights * self.criterion(Y_hat, Y)
             l2_reg = self.l2_regularization()
@@ -138,13 +178,13 @@ class Agent:
             tqdm_batch.update()
 
         self.val_writer.add_scalar('Loss', total_loss, epoch)
-        print("epoch", epoch, "loss:", total_loss)
+        message = f"epoch: {epoch}, loss: {total_loss}"
 
         tqdm_batch.close()
-        return total_loss
+        return total_loss, message
 
     def l2_regularization(self):
-        l2 = torch.tensor(0)
+        l2 = torch.tensor(0.0, device=self.device)
 
         for param in self.model.parameters():
             l2 += torch.norm(param, 2)**2
@@ -192,7 +232,7 @@ class Agent:
     def build_loss_function(self):
         return nn.L1Loss(size_average=None, reduce=None, reduction='mean')
 
-    def save_model(self):
+    def save_model(self, epoch):
         ckpt = {'model': self.model.state_dict(),
                 'optimizer':self.optimizer.state_dict(),
                 'best_loss': self.best_loss,

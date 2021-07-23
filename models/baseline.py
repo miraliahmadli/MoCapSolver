@@ -39,7 +39,7 @@ class Baseline(nn.Module):
         self.last_layer = nn.Linear(hidden_size, self.output_size)
 
     def forward(self, X, Z):
-        x = torch.cat((X[..., None], Z[..., None])).view(-1, self.input_size)
+        x = torch.cat((X[..., None], Z[..., None]), axis=-1).view(-1, self.input_size)
         x = self.first_layer(x)
         x = self.skip_block(x)
         x = self.relu(x)
