@@ -47,7 +47,7 @@ class Baseline(nn.Module):
 
         if self.use_svd:
             x = x.view(-1, 3, 4)
-            x[:, :, :3] = symmetric_orthogonalization(x[:, :, :3])
+            x[:, :, :3] = symmetric_orthogonalization(x[:, :, :3].clone()).clone()
             x = x.view(-1, self.output_size)
 
         return x

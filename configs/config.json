@@ -6,12 +6,12 @@
     "var_filenames": "data/train.txt",
     "test_filenames": "data/train.txt",
 
-    "model_dir": "logs/1/model.pth",
-    "train_sum": "logs/1/tensorboard/train",
-    "val_sum": "logs/1/tensorboard/val",
+    "model_dir": "logs/2/model.pth",
+    "train_sum": "logs/2/tensorboard/train",
+    "val_sum": "logs/2/tensorboard/val",
 
     "use_gpu":true,
-    "epochs": 100,
+    "epochs": 200,
     "batch_size": 128,
     "num_markers": 41,
     "num_joints": 31,
@@ -23,7 +23,7 @@
         "baseline": {
             "hidden_size":2048,
             "num_layers": 5,
-            "use_svd": false
+            "use_svd": true
         }
     },
 
@@ -41,8 +41,9 @@
             "lr": 0.001
         },
         "AmsGrad": {
-            "lr": 0.01,
+            "lr": 0.005,
             "weight_decay": 0.01
-        }
+        },
+        "Step_LR": [35, 50, 60, 100, 150]
     }
 }

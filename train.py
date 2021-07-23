@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
+from torch.optim.lr_scheduler import MultiStepLR 
 
 from mocap_dataset import MoCap
 from models.baseline import Baseline
@@ -82,11 +83,14 @@ class Agent:
         if os.path.exists(self.checkpoint_dir):
             last_epoch = self.load_model()
 
+        self.scheduler = MultiStepLR(self.optimizer, milestones=self.cfg.optimizer.Step_LR,\
+                                    gamma=0.1, last_epoch=last_epoch)
         epochs = self.cfg.epochs
         self.train_writer = SummaryWriter(self.cfg.train_sum, "Train")
         self.val_writer = SummaryWriter(self.cfg.val_sum, "Val")
 
         for epoch in range(last_epoch + 1, epochs + 1):
+            self.scheduler.step()
             _, msg = self.train_per_epoch(epoch)
             train_loss_f.append(msg)
             if epoch > 1:
