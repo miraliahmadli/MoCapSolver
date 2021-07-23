@@ -115,7 +115,7 @@ class Agent:
             Y, Z = Y.to(torch.float32), Z.to(torch.float32)
             Y, Z = Y.to(self.device), Z.to(self.device)
 
-            z_mu, z_cov = get_stat_Z(Z)
+            # z_mu, z_cov = get_stat_Z(Z)
             # Z_sample = sample_Z(z_mu, z_cov, self.batch_size).view(-1, self.num_markers, self.num_joints, 3)
 
             X = LBS(self.w, Y, Z)
@@ -127,6 +127,7 @@ class Agent:
 
             self.optimizer.zero_grad()
             Y_hat = self.model(X, Z_pw).view(bs, self.num_joints, 3, 4)
+            Y_hat = denormalize_Y(Y_hat)
 
             l1_loss = self.user_weights * self.criterion(Y_hat, Y)
             l2_reg = self.l2_regularization()
@@ -155,7 +156,7 @@ class Agent:
             bs = Y.shape[0]
             Y, Z = Y.to(torch.float32).to(self.device), Z.to(torch.float32).to(self.device)
 
-            z_mu, z_cov = get_stat_Z(Z)
+            # z_mu, z_cov = get_stat_Z(Z)
             # Z_sample = sample_Z(z_mu, z_cov, self.batch_size).view(-1, self.num_markers, self.num_joints, 3)
 
             X = LBS(self.w, Y, Z)
