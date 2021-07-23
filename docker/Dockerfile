@@ -13,8 +13,8 @@ RUN curl -o ~/miniconda.sh https://repo.anaconda.com/miniconda/Miniconda3-latest
     && rm ~/miniconda.sh \
     && /opt/conda/bin/conda install -y python=3.8 \
     && /opt/conda/bin/conda install -y numpy jupyter matplotlib pandas tqdm \
-    && /opt/conda/bin/conda install -y pytorch==1.8.1 cudatoolkit=10.2 -c pytorch -c nvidia\
-    && /opt/conda/bin/conda install -y -c conda-forge ezc3d multiprocess \
+    && /opt/conda/bin/conda install -y pytorch==1.8.1 cudatoolkit=10.2 -c pytorch -c nvidia \
+    && /opt/conda/bin/conda install -y -c conda-forge ezc3d multiprocess tensorboard tensorboardx easydict \
     && /opt/conda/bin/conda clean -ya
 
 ENV PATH /opt/conda/bin:$PATH
@@ -24,6 +24,7 @@ RUN git clone https://github.com/beyaldiz/fairmotion.git \
     && python -m pip install -e .
 
 
-#Port for Jupyter
+#Port for Jupyter, Tensorboard
 EXPOSE 8888
+EXPOSE 6006
 
