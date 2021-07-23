@@ -30,11 +30,12 @@ def read_cfg(cfg_file):
 def main():
     args = parse_arguments()
     cfg = read_cfg(args.config)
-    agent = Agent(cfg)
     if args.mode == 'train':
+        agent = Agent(cfg)
         agent.train()
     elif args.mode == "test":
-        raise NotImplementedError
+        agent = Agent(cfg, True)
+        agent.test_one_animation()
     else:
         raise NotImplementedError
 

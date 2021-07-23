@@ -12,15 +12,16 @@ from models.baseline import Baseline
 from tools.utils import svd_rot_torch as svd_solver
 from tools.utils import LBS_torch as LBS
 from tools.utils import corrupt_torch as corrupt
-from tools.utils import preweighted_Z
+from tools.utils import preweighted_Z, xform_to_mat44_torch
 from tools.preprocess import weight_assign
 from tools.statistics import *
 
 
 class Agent:
-    def __init__(self, cfg):
+    def __init__(self, cfg, test=False):
         self.cfg = cfg
         self.checkpoint_dir = cfg.model_dir
+        self.is_test = test
 
         self.num_markers = cfg.num_markers
         self.num_joints = cfg.num_joints
@@ -184,6 +185,55 @@ class Agent:
         tqdm_batch.close()
         return total_loss, message
 
+    def test_one_animation(self):
+        self.test_dataset = MoCap(csv_file=self.cfg.csv_file , fnames=self.cfg.test_filenames,\
+                                num_marker=self.num_markers, num_joint=self.num_joints, test=True)
+
+        self.test_steps = len(self.test_dataset)
+
+        self.test_data_loader = DataLoader(self.test_dataset, batch_size=1, \
+                                            shuffle=False, num_workers=8)
+
+        self.build_model()
+        self.model.to(self.device)
+        self.criterion = self.build_loss_function()
+
+        if os.path.exists(self.checkpoint_dir):
+            self.load_model()
+        else:
+            print("There is no saved model")
+            exit()
+
+        self.model.eval()
+        for batch_idx, (Y, Z, F) in enumerate(self.test_data_loader):
+            bs = Y.shape[1]
+            Y, Z, F = Y.to(torch.float32).to(self.device).squeeze(0), Z.to(torch.float32).to(self.device).squeeze(0), \
+                        F.to(torch.float32).to(self.device).squeeze(0).unsqueeze(1)
+
+            # z_mu, z_cov = get_stat_Z(Z)
+            # Z_sample = sample_Z(z_mu, z_cov, self.batch_size).view(-1, self.num_markers, self.num_joints, 3)
+
+            X = LBS(self.w, Y, Z)
+            X = corrupt(X)
+            Z_pw = preweighted_Z(self.w, Z)
+
+            X = normalize_X(X)
+            Z = normalize_Z_pw(Z_pw)
+
+            Y_hat = self.model(X, Z).view(bs, self.num_joints, 3, 4)
+            Y_hat = denormalize_Y(Y_hat)
+
+            l1_loss = self.user_weights * self.criterion(Y_hat, Y)
+            l2_reg = self.l2_regularization()
+            loss = l1_loss + l2_reg
+
+            Y_hat_4x4 = xform_to_mat44_torch(Y_hat)
+            Y_ = F @ Y_hat_4x4
+            Y_ = Y_.cpu().detach().numpy()
+            np.save(f"result_{batch_idx}.npy", Y_)
+            print("loss={0:.4f}, l1_loss={1:.4f}, reg={2:.4f}".format(loss.item(), l1_loss, l2_reg))
+
+
     def l2_regularization(self):
         l2 = torch.tensor(0.0, device=self.device)
 
@@ -242,8 +292,9 @@ class Agent:
 
     def load_model(self):
         ckpt = torch.load(self.checkpoint_dir)
-        self.model.load_state_dict(ckpt['model']).to(self.device)
-        self.optimizer.load_state_dict(ckpt['optimizer'])
-        self.best_loss = ckpt['best_loss']
+        self.model.load_state_dict(ckpt['model'])
+        if not self.is_test:
+            self.optimizer.load_state_dict(ckpt['optimizer'])
+            self.best_loss = ckpt['best_loss']
 
         return ckpt['epoch']

@@ -4,7 +4,7 @@
 
     "train_filenames": "data/train.txt",
     "var_filenames": "data/train.txt",
-    "test_dir": "data/train.txt",
+    "test_filenames": "data/train.txt",
 
     "model_dir": "logs/1/model.pth",
     "train_sum": "logs/1/tensorboard/train",
