@@ -21,7 +21,7 @@ def weight_assign(joint_to_marker_file, num_marker=41, num_joints=31):
             splitted = l.split()[1:]
             joint_to_marker.append(splitted)
 
-    w = np.zeros((num_marker, num_joints))
+    w = torch.zeros((num_marker, num_joints))
     for i, markers in enumerate(joint_to_marker):
         for m in markers:
             w[main_labels.index(m), i] = 1
@@ -63,7 +63,7 @@ def get_Z_torch(X, Y):
 
     Z = torch.matmul(Y_inv_rot, torch.unsqueeze(X_expand, 1)) + Y_inv_tr
     Z = Z.permute((0, 2, 1, 3, 4))
-    Z = torch.squeeze(Z)
+    Z = torch.squeeze(Z, -1)
     return Z
 
 
@@ -80,10 +80,10 @@ def clean_XYZ_np(X_read, Y_read, avg_bone, m_conv=0.056444):
         Y: cleaned rotation + translation matrices, dim: (n, j, 3, 4)
         Z: local offsets, dim: (n, m, j, 3)
     '''
-    nans = np.isnan(X_read)[0].transpose(1, 0)
+    nans = np.isnan(X_read)[0].transpose(1, 0) # n x m
     nans_float = 1 - nans.astype(float)
-    nans_expand = np.expand_dims(nans_float, 2)
-    nans_expand2 = np.expand_dims(nans_expand, 3)
+    nans_expand = np.expand_dims(nans_float, 2) # n x m x 1
+    nans_expand2 = np.expand_dims(nans_expand, 3) # n x m x 1
     
     avg_bone_m = avg_bone * m_conv
 
@@ -106,9 +106,9 @@ def clean_XYZ_np(X_read, Y_read, avg_bone, m_conv=0.056444):
 def clean_XYZ_torch(X_read, Y_read, avg_bone, m_conv=0.056444):
     nans = torch.isnan(X_read)[0].transpose(1, 0)
     nans_float = 1 - nans.to(torch.float32)
-    nans_expand = torch.unsqueeze(nans_float, 2)
-    nans_expand2 = torch.unsqueeze(nans_expand, 3)
-    
+    nans_expand = torch.unsqueeze(nans_float, -1)
+    nans_expand2 = torch.unsqueeze(nans_expand, -1)
+
     avg_bone_m = avg_bone * m_conv
 
     X = torch.nan_to_num(X_read)
@@ -120,7 +120,7 @@ def clean_XYZ_torch(X_read, Y_read, avg_bone, m_conv=0.056444):
 
     Y = Y_read.clone()
     Y[..., 3] *= (1.0 / avg_bone)
-    
+
     Z = get_Z_torch(X, Y)
     Z *= nans_expand2
 
@@ -138,7 +138,7 @@ def local_frame_np(X, Y):
         Y: rotation + translation matrices, dim: (n, j, 3, 4)
 
     Return:
-        F: Computed local frame, dim(n, 3, 4)
+        F: Computed local frame, dim: (n, 3, 4)
         Y_local: Y fitted into local frame, dim: (n, j, 3, 4)
     '''
     X_tr = np.mean(X[:, local_frame_markers, :], axis = 1)

@@ -21,7 +21,7 @@ def xform_to_mat44_np(X):
 
 def xform_to_mat44_torch(X, device="cuda"):
     shape = X.shape[: -2] + (1, 4)
-    affine = torch.zeros(shape).to(device)
+    affine = torch.zeros(shape, device=device)
     affine[..., -1] = 1
     X_44 = torch.cat((X, affine), axis = -2)
 
@@ -91,13 +91,13 @@ def LBS_np(w, Y, Z):
     return X
 
 
-def LBS_torch(w, Y, Z):
+def LBS_torch(w, Y, Z, device="cuda"):
     m, j = w.shape
     n = Z.shape[0]
 
     w_ = w.permute(1, 0) # j x m
 
-    z_padding = torch.ones((n, m, j, 1))
+    z_padding = torch.ones((n, m, j, 1), device=device)
     Z_ = torch.cat((Z, z_padding), axis=3)
     Z_ = Z_.permute(2, 0, 3, 1) # j x n x 4 x m
 
@@ -249,12 +249,12 @@ def corrupt_np(X, sigma_occ=0.1, sigma_shift=0.1, beta=0.5):
     return X_hat
 
 
-def corrupt_torch(X, sigma_occ=0.1, sigma_shift=0.1, beta=50):
+def corrupt_torch(X, sigma_occ=0.1, sigma_shift=0.1, beta=.5, device="cuda"):
     n, m, _ = X.shape
     
     # Sample probability at which to occlude / shift markers.
-    a_occ = torch.normal(0.0, sigma_occ, (n, 1)) # (n, 1)
-    a_shift = torch.normal(0.0, sigma_shift, (n, 1)) # (n, 1)
+    a_occ = torch.normal(0.0, sigma_occ, (n, 1), device=device) # (n, 1)
+    a_shift = torch.normal(0.0, sigma_shift, (n, 1), device=device) # (n, 1)
  
     # Sample using clipped probabilities if markers are occluded / shifted.
     a_occ = torch.abs(a_occ)
@@ -265,18 +265,25 @@ def corrupt_torch(X, sigma_occ=0.1, sigma_shift=0.1, beta=50):
 
     sampler_occ = torch.distributions.bernoulli.Bernoulli(a_occ)
     sampler_shift = torch.distributions.bernoulli.Bernoulli(a_shift)
-    X_occ = sampler_occ.sample((m,)).transpose(1, 0) # n x m
-    X_shift = sampler_shift.sample((m,)).transpose(1, 0) # n x m
+    X_occ = sampler_occ.sample((m,)).transpose(1, 0).to(device) # n x m
+    X_shift = sampler_shift.sample((m,)).transpose(1, 0).to(device) # n x m
     
     # Sample the magnitude by which to shift each marker.
     sampler_beta = torch.distributions.Uniform(low=-beta, high=beta)
-    X_v = sampler_beta.sample((n, m, 3)) # n x m x 3
+    X_v = sampler_beta.sample((n, m, 3)).to(device) # n x m x 3
 
     # Move shifted markers and place occluded markers at zero.
     X_hat = X + torch.multiply(X_v, X_shift.reshape((n, m, 1)))
     X_hat = torch.multiply(X_hat, (1 - X_occ).reshape((n, m, 1)))
 
     return X_hat
+
+
+def preweighted_Z(w, Z):
+    Z_ = torch.sum(
+            torch.mul(Z.permute(1, 2, 0, 3), w[..., None, None]), 
+            axis=1).permute(1, 0, 2) # n x m x 3
+    return Z_
 
 
 def test_lbs():
