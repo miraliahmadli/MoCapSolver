@@ -28,7 +28,6 @@ class Agent:
         self.num_joints = cfg.num_joints
         self.batch_size = cfg.batch_size
 
-        self.gamma = cfg.loss.gamma
         self.user_weights = cfg.user_weights
         self.w = weight_assign(cfg.joint_to_marker, cfg.num_markers, cfg.num_joints)
 
@@ -84,7 +83,7 @@ class Agent:
             last_epoch = self.load_model()
 
         self.scheduler = MultiStepLR(self.optimizer, milestones=self.cfg.optimizer.Step_LR,\
-                                    gamma=0.1, last_epoch=last_epoch)
+                                    gamma=0.1, last_epoch=last_epoch-1)
         epochs = self.cfg.epochs
         self.train_writer = SummaryWriter(self.cfg.train_sum, "Train")
         self.val_writer = SummaryWriter(self.cfg.val_sum, "Val")
@@ -113,10 +112,12 @@ class Agent:
     def train_per_epoch(self, epoch):
         tqdm_batch = tqdm(total=self.train_steps, dynamic_ncols=True) 
         total_loss = 0
+        n = 0
 
         self.model.train()
         for batch_idx, (Y, Z, _) in enumerate(self.train_data_loader):
             bs = Y.shape[0]
+            n += bs
             Y, Z = Y.to(torch.float32), Z.to(torch.float32)
             Y, Z = Y.to(self.device), Z.to(self.device)
 
@@ -134,18 +135,17 @@ class Agent:
             Y_hat = self.model(X, Z_pw).view(bs, self.num_joints, 3, 4)
             Y_hat = denormalize_Y(Y_hat)
 
-            l1_loss = self.user_weights * self.criterion(Y_hat, Y)
-            l2_reg = self.l2_regularization()
-            loss = l1_loss + l2_reg
+            loss = self.user_weights * self.criterion(Y_hat, Y)
             loss.backward()
             self.optimizer.step()
 
             total_loss += loss.item()
 
-            tqdm_update = "Epoch={0:04d},loss={1:.4f}, l1_loss={2:.4f}, reg={3:.4f}".format(epoch, loss.item(), l1_loss, l2_reg)
+            tqdm_update = "Epoch={0:04d},loss={1:.4f}".format(epoch, loss.item() / bs)
             tqdm_batch.set_postfix_str(tqdm_update)
             tqdm_batch.update()
 
+        total_loss /= n
         self.train_writer.add_scalar('Loss', total_loss, epoch)
         message = f"epoch: {epoch}, loss: {total_loss}"
 
@@ -155,34 +155,36 @@ class Agent:
     def val_per_epoch(self, epoch):
         tqdm_batch = tqdm(total=self.val_steps, dynamic_ncols=True)
         total_loss = 0
+        n = 0
 
         self.model.eval()
-        for batch_idx, (Y, Z, _) in enumerate(self.val_data_loader):
-            bs = Y.shape[0]
-            Y, Z = Y.to(torch.float32).to(self.device), Z.to(torch.float32).to(self.device)
+        with torch.no_grad():
+            for batch_idx, (Y, Z, _) in enumerate(self.val_data_loader):
+                bs = Y.shape[0]
+                n += bs
+                Y, Z = Y.to(torch.float32).to(self.device), Z.to(torch.float32).to(self.device)
 
-            # z_mu, z_cov = get_stat_Z(Z)
-            # Z_sample = sample_Z(z_mu, z_cov, self.batch_size).view(-1, self.num_markers, self.num_joints, 3)
+                # z_mu, z_cov = get_stat_Z(Z)
+                # Z_sample = sample_Z(z_mu, z_cov, self.batch_size).view(-1, self.num_markers, self.num_joints, 3)
 
-            X = LBS(self.w, Y, Z)
-            X = corrupt(X)
-            Z_pw = preweighted_Z(self.w, Z)
+                X = LBS(self.w, Y, Z)
+                X = corrupt(X)
+                Z_pw = preweighted_Z(self.w, Z)
 
-            X = normalize_X(X)
-            Z = normalize_Z_pw(Z_pw)
+                X = normalize_X(X)
+                Z = normalize_Z_pw(Z_pw)
 
-            Y_hat = self.model(X, Z).view(bs, self.num_joints, 3, 4)
-            Y_hat = denormalize_Y(Y_hat)
+                Y_hat = self.model(X, Z).view(bs, self.num_joints, 3, 4)
+                Y_hat = denormalize_Y(Y_hat)
 
-            l1_loss = self.user_weights * self.criterion(Y_hat, Y)
-            l2_reg = self.l2_regularization()
-            loss = l1_loss + l2_reg
-            total_loss += loss.item()
+                loss = self.user_weights * self.criterion(Y_hat, Y)
+                total_loss += loss.item()
 
-            tqdm_update = "Epoch={0:04d},loss={1:.4f}, l1_loss={2:.4f}, reg={3:.4f}".format(epoch, loss.item(), l1_loss, l2_reg)
-            tqdm_batch.set_postfix_str(tqdm_update)
-            tqdm_batch.update()
+                tqdm_update = "Epoch={0:04d},loss={1:.4f}".format(epoch, loss.item() / bs)
+                tqdm_batch.set_postfix_str(tqdm_update)
+                tqdm_batch.update()
 
+        total_loss /= n
         self.val_writer.add_scalar('Loss', total_loss, epoch)
         message = f"epoch: {epoch}, loss: {total_loss}"
 
@@ -227,24 +229,13 @@ class Agent:
             Y_hat = self.model(X, Z).view(bs, self.num_joints, 3, 4)
             Y_hat = denormalize_Y(Y_hat)
 
-            l1_loss = self.user_weights * self.criterion(Y_hat, Y)
-            l2_reg = self.l2_regularization()
-            loss = l1_loss + l2_reg
+            loss = self.user_weights * self.criterion(Y_hat, Y)
 
             Y_hat_4x4 = xform_to_mat44_torch(Y_hat)
             Y_ = F @ Y_hat_4x4
             Y_ = Y_.cpu().detach().numpy()
             np.save(f"result_{batch_idx}.npy", Y_)
-            print("loss={0:.4f}, l1_loss={1:.4f}, reg={2:.4f}".format(loss.item(), l1_loss, l2_reg))
-
-
-    def l2_regularization(self):
-        l2 = torch.tensor(0.0, device=self.device)
-
-        for param in self.model.parameters():
-            l2 += torch.norm(param, 2)**2
-
-        return l2 * self.gamma
+            print("loss={0:.4f}".format(loss.item()))
 
     def ls_solver(self):
         tqdm_batch = tqdm(total=self.train_steps, dynamic_ncols=True)
@@ -262,9 +253,7 @@ class Agent:
             # do preprocessing and get corrupted X and preweighted Z
             Y_hat = self.model(X, Z)
 
-            l1_loss = self.user_weights * self.criterion(Y_hat, Y)
-            l2_reg = self.l2_regularization()
-            loss = l1_loss + l2_reg
+            loss = self.user_weights * self.criterion(Y_hat, Y)
             total_loss += loss.item()
 
             tqdm_update = "Loss={0:.4f}, L1={1:.4f}, reg={2:.4f}, Total={3:.4f}".format(loss.item(), l1_loss, l2_reg, total_loss)
@@ -285,7 +274,7 @@ class Agent:
                                     weight_decay=self.cfg.optimizer.AmsGrad.weight_decay, amsgrad=True)
 
     def build_loss_function(self):
-        return nn.L1Loss(size_average=None, reduce=None, reduction='mean')
+        return nn.L1Loss(size_average=None, reduce=None, reduction='sum')
 
     def save_model(self, epoch):
         ckpt = {'model': self.model.state_dict(),

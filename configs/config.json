@@ -27,10 +27,6 @@
         }
     },
 
-    "loss": {
-        "gamma": 0.01
-    },
-
     "optimizer":{
         "available": ["SGD", "Adam", "AmsGrad"],
         "used": "AmsGrad",
