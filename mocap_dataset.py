@@ -1,5 +1,7 @@
+import os
 import numpy as np
 import pandas as pd
+import multiprocess
 
 import torch
 from torch.utils.data import Dataset
@@ -16,18 +18,22 @@ class MoCap(Dataset):
 
         self.df = pd.read_csv(csv_file)
         self.df = self.df.loc[self.df['file_stem'].isin(self.data_list)]
-        self.marker_data = np.empty((4, num_marker, 0))
-        self.motion_data = np.empty((0, num_joint, 3, 4))
-        self.avg_bone = np.empty((0, 1))
 
-        for marker_path, motion_path, avg_bone in zip(self.df["marker_npy_path"].values,\
-                            self.df["motion_npy_path"].values, self.df["avg_bone"].values):
+        def read_files(inputs):
+            marker_path, motion_path, avg_bone = inputs
             X_read = np.load(marker_path)
             Y_read = np.load(motion_path)
-            self.marker_data = np.concatenate([self.marker_data, X_read], -1)
-            self.motion_data = np.concatenate([self.motion_data, Y_read], 0)
             avg_bone = np.broadcast_to(avg_bone, (Y_read.shape[0], 1))
-            self.avg_bone = np.concatenate([self.avg_bone, avg_bone], 0)
+            return (X_read, Y_read, avg_bone)
+
+        fnames = zip(self.df["marker_npy_path"].values,\
+                        self.df["motion_npy_path"].values, self.df["avg_bone"].values)
+        with multiprocess.Pool(processes = os.cpu_count()) as pool:
+            data = pool.map(read_files, fnames)
+
+        self.marker_data = np.concatenate([x[0] for x in data], -1)
+        self.motion_data = np.concatenate([x[1] for x in data], 0)
+        self.avg_bone = np.concatenate([x[2] for x in data], 0)
 
         if test:
             self.marker_data = np.expand_dims(self.marker_data, 0)
