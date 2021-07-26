@@ -133,7 +133,7 @@ class Agent:
 
             self.optimizer.zero_grad()
             Y_hat = self.model(X, Z_pw).view(bs, self.num_joints, 3, 4)
-            Y_hat = denormalize_Y(Y_hat)
+            Y_hat = denormalize_Y(Y_hat, Y)
 
             loss = self.user_weights * self.criterion(Y_hat, Y)
             loss.backward()
@@ -175,7 +175,7 @@ class Agent:
                 Z = normalize_Z_pw(Z_pw)
 
                 Y_hat = self.model(X, Z).view(bs, self.num_joints, 3, 4)
-                Y_hat = denormalize_Y(Y_hat)
+                Y_hat = denormalize_Y(Y_hat, Y)
 
                 loss = self.user_weights * self.criterion(Y_hat, Y)
                 total_loss += loss.item()
@@ -227,14 +227,14 @@ class Agent:
             Z = normalize_Z_pw(Z_pw)
 
             Y_hat = self.model(X, Z).view(bs, self.num_joints, 3, 4)
-            Y_hat = denormalize_Y(Y_hat)
+            Y_hat = denormalize_Y(Y_hat, Y)
 
-            loss = self.user_weights * self.criterion(Y_hat, Y)
+            loss = self.user_weights * self.criterion(Y_hat, Y) / bs
 
             Y_hat_4x4 = xform_to_mat44_torch(Y_hat)
             Y_ = F @ Y_hat_4x4
             Y_ = Y_.cpu().detach().numpy()
-            np.save(f"result_{batch_idx}.npy", Y_)
+            np.save(f"asd.npy", Y_)
             print("loss={0:.4f}".format(loss.item()))
 
     def ls_solver(self):
@@ -274,7 +274,7 @@ class Agent:
                                     weight_decay=self.cfg.optimizer.AmsGrad.weight_decay, amsgrad=True)
 
     def build_loss_function(self):
-        return nn.L1Loss(size_average=None, reduce=None, reduction='sum')
+        return nn.L1Loss(reduction='sum')
 
     def save_model(self, epoch):
         ckpt = {'model': self.model.state_dict(),
