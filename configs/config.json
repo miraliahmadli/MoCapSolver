@@ -1,9 +1,9 @@
 {
-    "joint_to_marker": "dataset/joint_to_marker.txt",
+    "joint_to_marker": "dataset/joint_to_marker_one2one.txt",
     "csv_file": "dataset/meta_data.csv",
 
     "train_filenames": "data/train.txt",
-    "var_filenames": "data/train.txt",
+    "val_filenames": "data/valid.txt",
     "test_filenames": "data/train.txt",
 
     "model_dir": "logs/2/model.pth",

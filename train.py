@@ -56,7 +56,7 @@ class Agent:
     def load_data(self):
         self.train_dataset = MoCap(csv_file=self.cfg.csv_file , fnames=self.cfg.train_filenames,\
                                 num_marker=self.num_markers, num_joint=self.num_joints)
-        self.val_dataset = MoCap(csv_file=self.cfg.csv_file , fnames=self.cfg.var_filenames,\
+        self.val_dataset = MoCap(csv_file=self.cfg.csv_file , fnames=self.cfg.val_filenames,\
                                 num_marker=self.num_markers, num_joint=self.num_joints)
 
         self.train_steps = len(self.train_dataset) // self.cfg.batch_size

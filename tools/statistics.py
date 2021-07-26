@@ -2,7 +2,7 @@ import torch
 import numpy as np
 
 
-def denormalize_Y(Y):
+def denormalize_Y(Y_hat, Y):
     '''
     Args:
         Y : rotation and translation matrices
@@ -13,7 +13,7 @@ def denormalize_Y(Y):
     '''
     Y_mu = torch.mean(Y, 0).unsqueeze(0)
     Y_std = torch.std(Y, 0, unbiased=True).unsqueeze(0)
-    Y_denorm = (Y * Y_std) + Y_mu
+    Y_denorm = (Y_hat * Y_std) + Y_mu
     return Y_denorm
 
 
