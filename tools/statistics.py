@@ -17,7 +17,7 @@ def denormalize_Y(Y_hat, Y):
     return Y_denorm
 
 
-def normalize_X(X):
+def normalize_X(X_hat, X):
     '''
     Args:
         X : rotation and translation matrices
@@ -32,7 +32,7 @@ def normalize_X(X):
     X_mu = torch.mean(X, 0)
     X_std = torch.std(X, 0, unbiased=True)
 
-    X_norm = (X - X_mu.unsqueeze(0)) / X_std.unsqueeze(0)
+    X_norm = (X_hat - X_mu.unsqueeze(0)) / X_std.unsqueeze(0)
     return X_norm
 
 
@@ -55,7 +55,7 @@ def normalize_Z_pw(Z):
     return Z_norm
 
 
-def get_stat_Z(Z):
+def get_stat_Z(Z, eps=0.0001):
     '''
     Args:
         Z : local offsets
@@ -68,21 +68,20 @@ def get_stat_Z(Z):
     Z_mu = torch.mean(Z, 0)
 
     Z_ = Z - Z_mu[None, ...]
-    Z_ = Z_.view(n, -1).transpose(-1, -2)
-    Z_cov = Z_ @ Z_.transpose(-1, -2)
+    Z_ = Z_.view(n, -1)
+    Z_cov = Z_.transpose(-1, -2) @ Z_
     if n != 1:
         Z_cov /= (n-1)
 
     # Make positive sym definite
     diag = Z_cov.diagonal()
-    diag += 0.000001
+    diag += eps
 
     Z_mu = Z_mu.view(-1)
     return Z_mu, Z_cov
 
 
 def sample_Z(z_mu, z_cov, batch_size):
-    print(z_cov.shape, z_mu.shape, batch_size)
     sampler = torch.distributions.multivariate_normal.MultivariateNormal(z_mu, z_cov)
     Z = sampler.sample((batch_size, ))
     return Z
@@ -94,24 +93,26 @@ def is_psd(mat):
 
 def test_stats():
     z = np.random.rand(128, 41, 31, 3)
-    # z_cov_np = np.cov(z.reshape((100, -1)).transpose(1, 0), bias=True)
-    # z_cov_np = torch.tensor(z_cov_np)
-    # print(is_psd(z_cov_np))
+    z_cov_np = np.cov(z.reshape((128, -1)).transpose(1, 0), bias=False)
+    z_cov_np = torch.tensor(z_cov_np)
+    print(is_psd(z_cov_np))
+    print(z_cov_np.shape)
     z = torch.tensor(z).to("cuda")
     z_mu, z_cov = get_stat_Z(z)
     print("z_mu", z_mu.shape)
     print("z_cov", z_cov.shape)
     diag = z_cov.diagonal()
     # diag += 0.00000001
-    # print(is_psd(z_cov))
+    print(is_psd(z_cov))
     z_sample = sample_Z(z_mu, z_cov, z.shape[0])
-    print(z_sample)
+    # print(z_sample)
     print(z_sample.shape)
+    
 
-    # z_cov_np = torch.tensor(z_cov_np)
-    # diff = torch.abs(z_cov - z_cov_np).sum().data
-    # print(torch.max(torch.abs(z_cov_np - z_cov)))
-    # print(diff)
+    z_cov_np = torch.tensor(z_cov_np, device="cuda")
+    diff = torch.abs(z_cov - z_cov_np).sum().data
+    print(torch.max(torch.abs(z_cov_np - z_cov)))
+    print(diff)
 
 
 if __name__ == "__main__":

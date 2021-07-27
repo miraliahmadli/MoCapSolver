@@ -51,6 +51,8 @@ class Agent:
             self.model = None
         else:
             raise NotImplementedError
+        # if torch.cuda.device_count() > 1:
+        #     self.model = nn.DataParallel(self.model)
         self.model.to(self.device)
 
     def load_data(self):
@@ -62,10 +64,15 @@ class Agent:
         self.train_steps = len(self.train_dataset) // self.cfg.batch_size
         self.val_steps = len(self.val_dataset) // self.cfg.batch_size
 
+        # train_sampler = torch.utils.data.distributed.DistributedSampler(
+        #         self.train_dataset, num_replicas=torch.cuda.device_count() )
+        # val_sampler = torch.utils.data.distributed.DistributedSampler(
+        #         self.val_dataset, shuffle=False, num_replicas=torch.cuda.device_count())
+
         self.train_data_loader = DataLoader(self.train_dataset, batch_size=self.batch_size,\
-                                            shuffle=True, num_workers=8)
+                                            shuffle=True, num_workers=8, pin_memory=True)#, sampler=train_sampler)
         self.val_data_loader = DataLoader(self.val_dataset, batch_size=self.batch_size,\
-                                            shuffle=False, num_workers=8)
+                                            shuffle=False, num_workers=8, pin_memory=True)#, sampler=val_sampler)
 
     def train(self):
         self.best_loss = float("inf")
@@ -121,14 +128,14 @@ class Agent:
             Y, Z = Y.to(torch.float32), Z.to(torch.float32)
             Y, Z = Y.to(self.device), Z.to(self.device)
 
-            # z_mu, z_cov = get_stat_Z(Z)
-            # Z_sample = sample_Z(z_mu, z_cov, self.batch_size).view(-1, self.num_markers, self.num_joints, 3)
+            z_mu, z_cov = get_stat_Z(Z)
+            Z_sample = sample_Z(z_mu, z_cov, self.batch_size).view(-1, self.num_markers, self.num_joints, 3)
 
             X = LBS(self.w, Y, Z)
-            X = corrupt(X)
+            X_hat = corrupt(X)
             Z_pw = preweighted_Z(self.w, Z)
 
-            X = normalize_X(X)
+            X = normalize_X(X_hat, X)
             Z = normalize_Z_pw(Z_pw)
 
             self.optimizer.zero_grad()
@@ -164,14 +171,14 @@ class Agent:
                 n += bs
                 Y, Z = Y.to(torch.float32).to(self.device), Z.to(torch.float32).to(self.device)
 
-                # z_mu, z_cov = get_stat_Z(Z)
-                # Z_sample = sample_Z(z_mu, z_cov, self.batch_size).view(-1, self.num_markers, self.num_joints, 3)
+                z_mu, z_cov = get_stat_Z(Z)
+                Z_sample = sample_Z(z_mu, z_cov, self.batch_size).view(-1, self.num_markers, self.num_joints, 3)
 
                 X = LBS(self.w, Y, Z)
-                X = corrupt(X)
+                X_hat = corrupt(X)
                 Z_pw = preweighted_Z(self.w, Z)
 
-                X = normalize_X(X)
+                X = normalize_X(X_hat, X)
                 Z = normalize_Z_pw(Z_pw)
 
                 Y_hat = self.model(X, Z).view(bs, self.num_joints, 3, 4)
@@ -216,14 +223,14 @@ class Agent:
             Y, Z, F = Y.to(torch.float32).to(self.device).squeeze(0), Z.to(torch.float32).to(self.device).squeeze(0), \
                         F.to(torch.float32).to(self.device).squeeze(0).unsqueeze(1)
 
-            # z_mu, z_cov = get_stat_Z(Z)
-            # Z_sample = sample_Z(z_mu, z_cov, self.batch_size).view(-1, self.num_markers, self.num_joints, 3)
+            z_mu, z_cov = get_stat_Z(Z)
+            Z_sample = sample_Z(z_mu, z_cov, self.batch_size).view(-1, self.num_markers, self.num_joints, 3)
 
             X = LBS(self.w, Y, Z)
-            X = corrupt(X)
+            X_hat = corrupt(X)
             Z_pw = preweighted_Z(self.w, Z)
 
-            X = normalize_X(X)
+            X = normalize_X(X_hat, X)
             Z = normalize_Z_pw(Z_pw)
 
             Y_hat = self.model(X, Z).view(bs, self.num_joints, 3, 4)

@@ -160,17 +160,17 @@ def svd_rot_torch(P, Q):
     assert P.shape[-2:] == Q.shape[-2:]
     d, n = P.shape[-2:]
 
-    # X,Y are n x k
+    # X,Y are d x n
     P_ = torch.sum(P, axis=-1) / n
     Q_ = torch.sum(Q, axis=-1) / n
     X = P - P_[..., None]
     Y = Q - Q_[..., None]
     Yt = Y.permute(0, 2, 1)
 
-    # S is n x n
+    # S is d x d
     S = torch.matmul(X, Yt)
 
-    # U, V are n x m
+    # U, V are d x d
     U, _, V = torch.svd(S)
     # V = V_t.permute(0, 2, 1)
     Ut = U.permute(0, 2, 1)
@@ -178,10 +178,10 @@ def svd_rot_torch(P, Q):
     det = torch.det(torch.matmul(V, Ut))
     Ut[:, -1, :] *= det.view(-1, 1)
 
-    # R is n x n
+    # R is d x d
     R = torch.matmul(V, Ut)
 
-    # t is n x k
+    # t is d x n
     t = Q_.view(-1, d, 1) - torch.matmul(R, P_.view(-1, d, 1))
 
     return R, t
