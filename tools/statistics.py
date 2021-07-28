@@ -55,7 +55,7 @@ def normalize_Z_pw(Z):
     return Z_norm
 
 
-def get_stat_Z(Z, eps=0.0001):
+def get_stat_Z(Z, eps=0.01):
     '''
     Args:
         Z : local offsets

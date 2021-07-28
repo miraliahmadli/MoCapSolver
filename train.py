@@ -23,6 +23,7 @@ class Agent:
         self.cfg = cfg
         self.checkpoint_dir = cfg.model_dir
         self.is_test = test
+        self.conv_to_m = 0.056444
 
         self.num_markers = cfg.num_markers
         self.num_joints = cfg.num_joints
@@ -122,17 +123,19 @@ class Agent:
         n = 0
 
         self.model.train()
-        for batch_idx, (Y, Z, _) in enumerate(self.train_data_loader):
+        for batch_idx, (Y, Z, _, avg_bone) in enumerate(self.train_data_loader):
             bs = Y.shape[0]
             n += bs
-            Y, Z = Y.to(torch.float32), Z.to(torch.float32)
-            Y, Z = Y.to(self.device), Z.to(self.device)
+            Y, Z, avg_bone = Y.to(torch.float32), Z.to(torch.float32), avg_bone.to(torch.float32)
+            Y, Z, avg_bone = Y.to(self.device), Z.to(self.device), avg_bone.to(self.device).squeeze(1)
 
             z_mu, z_cov = get_stat_Z(Z)
             Z_sample = sample_Z(z_mu, z_cov, self.batch_size).view(-1, self.num_markers, self.num_joints, 3)
 
             X = LBS(self.w, Y, Z)
-            X_hat = corrupt(X)
+
+            beta = 0.5 / (self.conv_to_m * avg_bone)
+            X_hat = corrupt(X, beta=beta)
             Z_pw = preweighted_Z(self.w, Z)
 
             X = normalize_X(X_hat, X)
@@ -166,16 +169,18 @@ class Agent:
 
         self.model.eval()
         with torch.no_grad():
-            for batch_idx, (Y, Z, _) in enumerate(self.val_data_loader):
+            for batch_idx, (Y, Z, _, avg_bone) in enumerate(self.val_data_loader):
                 bs = Y.shape[0]
                 n += bs
-                Y, Z = Y.to(torch.float32).to(self.device), Z.to(torch.float32).to(self.device)
+                Y, Z, avg_bone = Y.to(torch.float32).to(self.device), Z.to(torch.float32).to(self.device), avg_bone.to(torch.float32).to(self.device).squeeze(1)
 
                 z_mu, z_cov = get_stat_Z(Z)
                 Z_sample = sample_Z(z_mu, z_cov, self.batch_size).view(-1, self.num_markers, self.num_joints, 3)
 
                 X = LBS(self.w, Y, Z)
-                X_hat = corrupt(X)
+
+                beta = 0.5 / (self.conv_to_m * avg_bone)
+                X_hat = corrupt(X, beta=beta)
                 Z_pw = preweighted_Z(self.w, Z)
 
                 X = normalize_X(X_hat, X)
@@ -218,16 +223,18 @@ class Agent:
             exit()
 
         self.model.eval()
-        for batch_idx, (Y, Z, F) in enumerate(self.test_data_loader):
+        for batch_idx, (Y, Z, F, avg_bone) in enumerate(self.test_data_loader):
             bs = Y.shape[1]
-            Y, Z, F = Y.to(torch.float32).to(self.device).squeeze(0), Z.to(torch.float32).to(self.device).squeeze(0), \
-                        F.to(torch.float32).to(self.device).squeeze(0).unsqueeze(1)
+            Y, Z, F, avg_bone = Y.to(torch.float32).to(self.device).squeeze(0), Z.to(torch.float32).to(self.device).squeeze(0),\
+                                F.to(torch.float32).to(self.device).squeeze(0).unsqueeze(1), avg_bone.to(torch.float32).to(self.device).squeeze(1)
 
             z_mu, z_cov = get_stat_Z(Z)
             Z_sample = sample_Z(z_mu, z_cov, self.batch_size).view(-1, self.num_markers, self.num_joints, 3)
 
             X = LBS(self.w, Y, Z)
-            X_hat = corrupt(X)
+
+            beta = 0.5 / (self.conv_to_m * avg_bone)
+            X_hat = corrupt(X, beta=beta)
             Z_pw = preweighted_Z(self.w, Z)
 
             X = normalize_X(X_hat, X)
@@ -251,10 +258,10 @@ class Agent:
         self.load_data()
 
         total_loss = 0
-        for batch_idx, (X, Y, Z, F) in enumerate(self.val_data_loader):
-            X, Y, Z, F = X.to(torch.float32), Y.to(torch.float32),\
-                        Z.to(torch.float32), F.to(torch.float32)
-            X, Y, Z, F = X.to(self.device), Y.to(self.device), Z.to(self.device), F.to(self.device)
+        for batch_idx, (X, Y, Z, F, avg_bone) in enumerate(self.val_data_loader):
+            X, Y, Z, F, avg_bone = X.to(torch.float32), Y.to(torch.float32),\
+                        Z.to(torch.float32), F.to(torch.float32), avg_bone.to(torch.float32)
+            X, Y, Z, F, avg_bone = X.to(self.device), Y.to(self.device), Z.to(self.device), F.to(self.device), avg_bone.to(self.device).squeeze(1)
 
             # TODO:
             # do preprocessing and get corrupted X and preweighted Z

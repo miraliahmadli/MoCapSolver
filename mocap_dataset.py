@@ -61,4 +61,4 @@ class MoCap(Dataset):
         X, Y, Z = clean_data(X_read, Y_read, avg_bone)
         F, Y = local_frame(X, Y, "cpu")
         Y, Z = Y.squeeze(0), Z.squeeze(0)
-        return Y, Z, F
+        return Y, Z, F, avg_bone

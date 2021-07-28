@@ -270,7 +270,7 @@ def corrupt_torch(X, sigma_occ=0.1, sigma_shift=0.1, beta=.5, device="cuda"):
     
     # Sample the magnitude by which to shift each marker.
     sampler_beta = torch.distributions.Uniform(low=-beta, high=beta)
-    X_v = sampler_beta.sample((n, m, 3)).to(device) # n x m x 3
+    X_v = sampler_beta.sample((m, 3)).permute(2, 0, 1).to(device) # n x m x 3
 
     # Move shifted markers and place occluded markers at zero.
     X_hat = X + torch.multiply(X_v, X_shift.reshape((n, m, 1)))
