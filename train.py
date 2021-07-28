@@ -106,10 +106,10 @@ class Agent:
                     self.best_loss = loss
                     self.save_model(epoch)
 
-        with open("train_loss.txt", "w+") as f:
+        with open(self.cfg.logs_dir + "train_loss.txt", "w+") as f:
             for msg in train_loss_f:
                 f.write(msg + "\n")
-        with open("val_loss.txt", "w+") as f:
+        with open(self.cfg.logs_dir + "val_loss.txt", "w+") as f:
             for msg in val_loss_f:
                 f.write(msg + "\n")
 
