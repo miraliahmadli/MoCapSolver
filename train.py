@@ -16,6 +16,7 @@ from tools.utils import corrupt_torch as corrupt
 from tools.utils import preweighted_Z, xform_to_mat44_torch
 from tools.preprocess import weight_assign
 from tools.statistics import *
+from tools.transform import transformation_diff
 
 
 class Agent:
@@ -150,16 +151,27 @@ class Agent:
             loss.backward()
             self.optimizer.step()
 
-            total_loss += loss.item()
+            total_loss += loss.item() #/ (self.num_joints * 3 * 4)
+            angle_diff, translation_diff = transformation_diff(Y_hat, Y)
+            angle_diff = torch.sum(torch.abs(angle_diff), axis=0)
+            translation_diff = torch.sum(translation_diff, axis=0)
 
             tqdm_update = "Epoch={0:04d},loss={1:.4f}".format(epoch, loss.item() / bs)
             tqdm_batch.set_postfix_str(tqdm_update)
             tqdm_batch.update()
 
         total_loss /= n
+        translation_diff /= n
+        angle_diff /= n
         self.train_writer.add_scalar('Loss', total_loss, epoch)
-        message = f"epoch: {epoch}, loss: {total_loss}"
+        for i in range(self.num_joints):
+            self.train_writer.add_scalar(f'joint_{i+1}: avg angle diff', angle_diff[i], epoch)
+            self.train_writer.add_scalar(f'joint_{i+1}: avg translation diff', translation_diff[i], epoch)
 
+        tqdm_update = "Epoch={0:04d},loss={1:.4f}".format(epoch, total_loss)
+        tqdm_batch.set_postfix_str(tqdm_update)
+        tqdm_batch.update()
+        message = f"epoch: {epoch}, loss: {total_loss}"
         tqdm_batch.close()
         return total_loss, message
 
@@ -191,16 +203,27 @@ class Agent:
                 Y_hat = denormalize_Y(Y_hat, Y)
 
                 loss = self.user_weights * self.criterion(Y_hat, Y)
-                total_loss += loss.item()
+                total_loss += loss.item() #/ (self.num_joints * 3 * 4)
+                angle_diff, translation_diff = transformation_diff(Y_hat, Y)
+                angle_diff = torch.sum(torch.abs(angle_diff), axis=0)
+                translation_diff = torch.sum(translation_diff, axis=0)
 
                 tqdm_update = "Epoch={0:04d},loss={1:.4f}".format(epoch, loss.item() / bs)
                 tqdm_batch.set_postfix_str(tqdm_update)
                 tqdm_batch.update()
 
         total_loss /= n
+        translation_diff /= n
+        angle_diff /= n
         self.val_writer.add_scalar('Loss', total_loss, epoch)
-        message = f"epoch: {epoch}, loss: {total_loss}"
+        for i in range(self.num_joints):
+            self.val_writer.add_scalar(f'joint_{i+1}: avg angle diff', angle_diff[i], epoch)
+            self.val_writer.add_scalar(f'joint_{i+1}: avg translation diff', translation_diff[i], epoch)
 
+        tqdm_update = "Epoch={0:04d},loss={1:.4f}".format(epoch, total_loss)
+        tqdm_batch.set_postfix_str(tqdm_update)
+        tqdm_batch.update()
+        message = f"epoch: {epoch}, loss: {total_loss}"
         tqdm_batch.close()
         return total_loss, message
 

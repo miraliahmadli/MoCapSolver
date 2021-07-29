@@ -516,11 +516,13 @@ def matrix_to_rotation_6d(matrix: torch.Tensor) -> torch.Tensor:
     return matrix[..., :2, :].clone().reshape(*matrix.size()[:-2], 6)
 
 
-def rot_matrix2angle(Y_hat, Y):
-    R_hat = Y_hat[...,:3].transpose(-2, -1)
+def transformation_diff(Y_hat, Y):
+    R_hat, t_hat = Y_hat[...,:3].transpose(-2, -1), Y_hat[..., 3]
+    t = Y[..., 3]
     R = R_hat @ Y[..., :3]
+    translation_diff = torch.norm(t - t_hat, p=2, dim=2)
 
-    return matrix_to_axis_angle(R)
+    return matrix_to_axis_angle(R)[..., -1], translation_diff
 
 
 def test_angle():
@@ -544,7 +546,7 @@ def test_angle():
     ]
     a = torch.Tensor(matrix_1)
     b = torch.Tensor(matrix_2)
-    ax_ang = rot_matrix2angle(a, b)
+    ax_ang = rot_mat2angle(a, b)
     print(ax_ang[:3])
     print(ax_ang[-1] / math.pi * 180)
 
