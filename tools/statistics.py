@@ -82,7 +82,8 @@ def get_stat_Z(Z, eps=0.01):
 
 
 def sample_Z(z_mu, z_cov, batch_size):
-    sampler = torch.distributions.multivariate_normal.MultivariateNormal(z_mu, z_cov)
+    scale_tril = torch.cholesky(z_cov)
+    sampler = torch.distributions.multivariate_normal.MultivariateNormal(loc=z_mu, scale_tril=scale_tril)
     Z = sampler.sample((batch_size, ))
     return Z
 

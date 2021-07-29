@@ -47,8 +47,10 @@ class MoCap(Dataset):
     def __getitem__(self, index):
         if self.is_test:
             X_read = self.marker_data[index]
+            avg_bone = self.avg_bone[:]
         else:
             X_read = self.marker_data[..., index]
+            avg_bone = self.avg_bone[index]
         Y_read = self.motion_data[index]
         avg_bone = self.avg_bone[index]
         X_read = torch.tensor(X_read)

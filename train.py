@@ -127,25 +127,26 @@ class Agent:
             bs = Y.shape[0]
             n += bs
             Y, Z, avg_bone = Y.to(torch.float32), Z.to(torch.float32), avg_bone.to(torch.float32)
-            Y, Z, avg_bone = Y.to(self.device), Z.to(self.device), avg_bone.to(self.device).squeeze(1)
+            Y, Z, avg_bone = Y.to(self.device), Z.to(self.device), avg_bone.to(self.device).squeeze(-1)
 
             z_mu, z_cov = get_stat_Z(Z)
-            Z_sample = sample_Z(z_mu, z_cov, self.batch_size).view(-1, self.num_markers, self.num_joints, 3)
+            Z_sample = sample_Z(z_mu, z_cov, bs).view(-1, self.num_markers, self.num_joints, 3)
 
-            X = LBS(self.w, Y, Z)
+            X = LBS(self.w, Y, Z_sample)
 
             beta = 0.5 / (self.conv_to_m * avg_bone)
             X_hat = corrupt(X, beta=beta)
-            Z_pw = preweighted_Z(self.w, Z)
+            Z_pw = preweighted_Z(self.w, Z_sample)
 
             X = normalize_X(X_hat, X)
             Z = normalize_Z_pw(Z_pw)
 
-            self.optimizer.zero_grad()
             Y_hat = self.model(X, Z_pw).view(bs, self.num_joints, 3, 4)
             Y_hat = denormalize_Y(Y_hat, Y)
 
             loss = self.user_weights * self.criterion(Y_hat, Y)
+
+            self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
 
@@ -172,16 +173,16 @@ class Agent:
             for batch_idx, (Y, Z, _, avg_bone) in enumerate(self.val_data_loader):
                 bs = Y.shape[0]
                 n += bs
-                Y, Z, avg_bone = Y.to(torch.float32).to(self.device), Z.to(torch.float32).to(self.device), avg_bone.to(torch.float32).to(self.device).squeeze(1)
+                Y, Z, avg_bone = Y.to(torch.float32).to(self.device), Z.to(torch.float32).to(self.device), avg_bone.to(torch.float32).to(self.device).squeeze(-1)
 
                 z_mu, z_cov = get_stat_Z(Z)
-                Z_sample = sample_Z(z_mu, z_cov, self.batch_size).view(-1, self.num_markers, self.num_joints, 3)
+                Z_sample = sample_Z(z_mu, z_cov, bs).view(-1, self.num_markers, self.num_joints, 3)
 
-                X = LBS(self.w, Y, Z)
+                X = LBS(self.w, Y, Z_sample)
 
                 beta = 0.5 / (self.conv_to_m * avg_bone)
                 X_hat = corrupt(X, beta=beta)
-                Z_pw = preweighted_Z(self.w, Z)
+                Z_pw = preweighted_Z(self.w, Z_sample)
 
                 X = normalize_X(X_hat, X)
                 Z = normalize_Z_pw(Z_pw)
@@ -226,7 +227,7 @@ class Agent:
         for batch_idx, (Y, Z, F, avg_bone) in enumerate(self.test_data_loader):
             bs = Y.shape[1]
             Y, Z, F, avg_bone = Y.to(torch.float32).to(self.device).squeeze(0), Z.to(torch.float32).to(self.device).squeeze(0),\
-                                F.to(torch.float32).to(self.device).squeeze(0).unsqueeze(1), avg_bone.to(torch.float32).to(self.device).squeeze(1)
+                                F.to(torch.float32).to(self.device).squeeze(0).unsqueeze(1), avg_bone.to(torch.float32).to(self.device).squeeze(-1)
 
             z_mu, z_cov = get_stat_Z(Z)
             Z_sample = sample_Z(z_mu, z_cov, self.batch_size).view(-1, self.num_markers, self.num_joints, 3)
@@ -261,7 +262,7 @@ class Agent:
         for batch_idx, (X, Y, Z, F, avg_bone) in enumerate(self.val_data_loader):
             X, Y, Z, F, avg_bone = X.to(torch.float32), Y.to(torch.float32),\
                         Z.to(torch.float32), F.to(torch.float32), avg_bone.to(torch.float32)
-            X, Y, Z, F, avg_bone = X.to(self.device), Y.to(self.device), Z.to(self.device), F.to(self.device), avg_bone.to(self.device).squeeze(1)
+            X, Y, Z, F, avg_bone = X.to(self.device), Y.to(self.device), Z.to(self.device), F.to(self.device), avg_bone.to(self.device).squeeze(-1)
 
             # TODO:
             # do preprocessing and get corrupted X and preweighted Z
@@ -284,7 +285,7 @@ class Agent:
         elif optimizer == "sgd":
             return torch.optim.SGD(self.model.parameters(), lr=self.cfg.optimizer.SGD.lr)
         elif optimizer == "amsgrad":
-            return torch.optim.AdamW(self.model.parameters(), lr=self.cfg.optimizer.AmsGrad.lr,
+            return torch.optim.Adam(self.model.parameters(), lr=self.cfg.optimizer.AmsGrad.lr,
                                     weight_decay=self.cfg.optimizer.AmsGrad.weight_decay, amsgrad=True)
 
     def build_loss_function(self):
