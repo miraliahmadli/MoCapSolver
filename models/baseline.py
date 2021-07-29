@@ -4,16 +4,16 @@ import torch.nn as nn
 from tools.utils import symmetric_orthogonalization
 
 
-class DenseBlock(nn.Module):
+class ResNetBlock(nn.Module):
     def __init__(self, hidden_size: int):
-        super(DenseBlock, self).__init__()
+        super(ResNetBlock, self).__init__()
         self.linear = nn.Linear(hidden_size, hidden_size)
         self.relu = nn.ReLU()
 
     def forward(self, x):
-        out = self.relu(x)
-        out = self.linear(out)
+        out = self.linear(x)
         out += x
+        out = self.relu(out)
         return out
 
 
@@ -31,26 +31,26 @@ class Baseline(nn.Module):
 
         self.first_layer = nn.Linear(self.input_size, hidden_size)
 
-        self.skip_block = torch.nn.Sequential()
+        self.resnet_block = torch.nn.Sequential()
         for i in range(num_skip_layers):
-            self.skip_block.add_module(f"skip_{i}", DenseBlock(hidden_size))
+            self.resnet_block.add_module(f"skip_{i}", ResNetBlock(hidden_size))
 
         self.relu = nn.ReLU()
         self.last_layer = nn.Linear(hidden_size, self.output_size)
 
     def forward(self, X, Z):
         x = torch.cat((X[..., None], Z[..., None]), axis=-1).view(-1, self.input_size)
-        x = self.first_layer(x)
-        x = self.skip_block(x)
-        x = self.relu(x)
-        x = self.last_layer(x)
+        out = self.first_layer(x)
+        out = self.relu(out)
+        out = self.resnet_block(out)
+        out = self.last_layer(out)
 
         if self.use_svd:
-            x = x.view(-1, 3, 4)
-            x[:, :, :3] = symmetric_orthogonalization(x[:, :, :3].clone()).clone()
-            x = x.view(-1, self.output_size)
+            out = out.view(-1, 3, 4)
+            out[:, :, :3] = symmetric_orthogonalization(out[:, :, :3].clone()).clone()
+            out = out.view(-1, self.output_size)
 
-        return x
+        return out
 
 
 def test():

@@ -168,7 +168,7 @@ class Agent:
             self.train_writer.add_scalar(f'joint_{i+1}: avg angle diff', angle_diff[i] / np.pi * 180, epoch)
             self.train_writer.add_scalar(f'joint_{i+1}: avg translation diff', translation_diff[i], epoch)
 
-        tqdm_update = "Epoch={0:04d},loss={1:.4f}".format(epoch, total_loss)
+        tqdm_update = "Train: Epoch={0:04d},loss={1:.4f}".format(epoch, total_loss)
         tqdm_batch.set_postfix_str(tqdm_update)
         tqdm_batch.update()
         message = f"epoch: {epoch}, loss: {total_loss}"
@@ -220,7 +220,7 @@ class Agent:
             self.val_writer.add_scalar(f'joint_{i+1}: avg angle diff', angle_diff[i] / np.pi * 180, epoch)
             self.val_writer.add_scalar(f'joint_{i+1}: avg translation diff', translation_diff[i], epoch)
 
-        tqdm_update = "Epoch={0:04d},loss={1:.4f}".format(epoch, total_loss)
+        tqdm_update = "Val: Epoch={0:04d},loss={1:.4f}".format(epoch, total_loss)
         tqdm_batch.set_postfix_str(tqdm_update)
         tqdm_batch.update()
         message = f"epoch: {epoch}, loss: {total_loss}"
