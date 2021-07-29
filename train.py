@@ -142,7 +142,7 @@ class Agent:
             X = normalize_X(X_hat, X)
             Z = normalize_Z_pw(Z_pw)
 
-            Y_hat = self.model(X, Z_pw).view(bs, self.num_joints, 3, 4)
+            Y_hat = self.model(X, Z).view(bs, self.num_joints, 3, 4)
             Y_hat = denormalize_Y(Y_hat, Y)
 
             loss = self.user_weights * self.criterion(Y_hat, Y)
@@ -165,7 +165,7 @@ class Agent:
         angle_diff /= n
         self.train_writer.add_scalar('Loss', total_loss, epoch)
         for i in range(self.num_joints):
-            self.train_writer.add_scalar(f'joint_{i+1}: avg angle diff', angle_diff[i], epoch)
+            self.train_writer.add_scalar(f'joint_{i+1}: avg angle diff', angle_diff[i] / np.pi * 180, epoch)
             self.train_writer.add_scalar(f'joint_{i+1}: avg translation diff', translation_diff[i], epoch)
 
         tqdm_update = "Epoch={0:04d},loss={1:.4f}".format(epoch, total_loss)
@@ -217,7 +217,7 @@ class Agent:
         angle_diff /= n
         self.val_writer.add_scalar('Loss', total_loss, epoch)
         for i in range(self.num_joints):
-            self.val_writer.add_scalar(f'joint_{i+1}: avg angle diff', angle_diff[i], epoch)
+            self.val_writer.add_scalar(f'joint_{i+1}: avg angle diff', angle_diff[i] / np.pi * 180, epoch)
             self.val_writer.add_scalar(f'joint_{i+1}: avg translation diff', translation_diff[i], epoch)
 
         tqdm_update = "Epoch={0:04d},loss={1:.4f}".format(epoch, total_loss)
@@ -255,11 +255,11 @@ class Agent:
             z_mu, z_cov = get_stat_Z(Z)
             Z_sample = sample_Z(z_mu, z_cov, self.batch_size).view(-1, self.num_markers, self.num_joints, 3)
 
-            X = LBS(self.w, Y, Z)
+            X = LBS(self.w, Y, Z_sample)
 
             beta = 0.5 / (self.conv_to_m * avg_bone)
             X_hat = corrupt(X, beta=beta)
-            Z_pw = preweighted_Z(self.w, Z)
+            Z_pw = preweighted_Z(self.w, Z_sample)
 
             X = normalize_X(X_hat, X)
             Z = normalize_Z_pw(Z_pw)
