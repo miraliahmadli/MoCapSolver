@@ -30,7 +30,8 @@ class Agent:
         self.num_joints = cfg.num_joints
         self.batch_size = cfg.batch_size
 
-        self.user_weights = cfg.user_weights
+        self.user_weights_rot = cfg.user_weights_rotation
+        self.user_weights_t = cfg.user_weights_translation
         self.w = weight_assign(cfg.joint_to_marker, cfg.num_markers, cfg.num_joints)
 
         self.device = torch.device('cuda' if self.cfg.use_gpu and torch.cuda.is_available() else 'cpu')
@@ -38,6 +39,8 @@ class Agent:
         if self.cfg.use_gpu and torch.cuda.is_available():
             print(torch.cuda.get_device_name(torch.cuda.current_device()))
         self.w = self.w.to(self.device)
+        self.user_weights_rot = torch.tensor(self.user_weights_rot, device=self.device).unsqueeze(0).unsqueeze(-1).unsqueeze(-1) / 3
+        self.user_weights_t = torch.tensor(self.user_weights_t, device=self.device).unsqueeze(0).unsqueeze(-1).unsqueeze(-1)
         self.model = None
 
     def build_model(self):
@@ -121,6 +124,8 @@ class Agent:
     def train_per_epoch(self, epoch):
         tqdm_batch = tqdm(total=self.train_steps, dynamic_ncols=True) 
         total_loss = 0
+        total_loss_rot = 0
+        total_loss_tr = 0
         total_angle_diff = torch.zeros(self.num_joints, dtype=torch.float32, device=self.device)
         total_translation_diff = torch.zeros(self.num_joints, dtype=torch.float32, device=self.device)
         n = 0
@@ -147,30 +152,38 @@ class Agent:
             Y_hat = self.model(X, Z).view(bs, self.num_joints, 3, 4)
             Y_hat = denormalize_Y(Y_hat, Y)
 
-            loss = self.user_weights * self.criterion(Y_hat, Y)
+            loss_rot, loss_tr = self.criterion(Y_hat, Y)
+            loss = loss_tr + loss_rot
 
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
 
             total_loss += loss.item() #/ (self.num_joints * 3 * 4)
+            total_loss_rot += loss_rot.item()
+            total_loss_tr += loss_tr.item()
             angle_diff, translation_diff = transformation_diff(Y_hat, Y)
             total_angle_diff += torch.sum(torch.abs(angle_diff), axis=0)
             total_translation_diff += torch.sum(translation_diff, axis=0)
 
-            tqdm_update = "Epoch={0:04d},loss={1:.4f}".format(epoch, loss.item() / bs)
+            tqdm_update = "Epoch={0:04d},loss={1:.4f}, rot_loss={2:.4f}, t_loss={3:.4f}".format(epoch, loss.item() / bs, loss_rot.item() / bs, loss_tr.item() / bs)
             tqdm_batch.set_postfix_str(tqdm_update)
             tqdm_batch.update()
 
         total_loss /= n
+        total_loss_rot /= n
+        total_loss_tr /= n
         total_translation_diff /= n
         total_angle_diff /= n
-        self.train_writer.add_scalar('Loss', total_loss, epoch)
+        if epoch != 1:
+            self.train_writer.add_scalar('Loss', total_loss, epoch)
+            self.train_writer.add_scalar('Rotation Loss', total_loss_rot, epoch)
+            self.train_writer.add_scalar('Translation Loss', total_loss_tr, epoch)
         for i in range(self.num_joints):
             self.train_writer.add_scalar(f'joint_{i+1}: avg angle diff', (total_angle_diff[i] / np.pi) * 180, epoch)
             self.train_writer.add_scalar(f'joint_{i+1}: avg translation diff', total_translation_diff[i], epoch)
 
-        tqdm_update = "Train: Epoch={0:04d},loss={1:.4f}".format(epoch, total_loss)
+        tqdm_update = "Train: Epoch={0:04d},loss={1:.4f}, rot_loss={2:.4f}, t_loss={3:.4f}".format(epoch, total_loss, total_loss_rot, total_loss_tr)
         tqdm_batch.set_postfix_str(tqdm_update)
         tqdm_batch.update()
         message = f"epoch: {epoch}, loss: {total_loss}"
@@ -180,6 +193,8 @@ class Agent:
     def val_per_epoch(self, epoch):
         tqdm_batch = tqdm(total=self.val_steps, dynamic_ncols=True)
         total_loss = 0
+        total_loss_rot = 0
+        total_loss_tr = 0
         total_angle_diff = torch.zeros(self.num_joints, dtype=torch.float32, device=self.device)
         total_translation_diff = torch.zeros(self.num_joints, dtype=torch.float32, device=self.device)
         n = 0
@@ -206,25 +221,33 @@ class Agent:
                 Y_hat = self.model(X, Z).view(bs, self.num_joints, 3, 4)
                 Y_hat = denormalize_Y(Y_hat, Y)
 
-                loss = self.user_weights * self.criterion(Y_hat, Y)
+                loss_rot, loss_tr = self.criterion(Y_hat, Y)
+                loss = loss_tr + loss_rot
+
                 total_loss += loss.item() #/ (self.num_joints * 3 * 4)
+                total_loss_rot += loss_rot.item()
+                total_loss_tr += loss_tr.item()
                 angle_diff, translation_diff = transformation_diff(Y_hat, Y)
                 total_angle_diff += torch.sum(torch.abs(angle_diff), axis=0)
                 total_translation_diff += torch.sum(translation_diff, axis=0)
 
-                tqdm_update = "Epoch={0:04d},loss={1:.4f}".format(epoch, loss.item() / bs)
+                tqdm_update = "Epoch={0:04d},loss={1:.4f}, rot_loss={2:.4f}, t_loss={3:.4f}".format(epoch, loss.item() / bs, loss_rot.item() / bs, loss_tr.item() / bs)
                 tqdm_batch.set_postfix_str(tqdm_update)
                 tqdm_batch.update()
 
         total_loss /= n
+        total_loss_rot /= n
+        total_loss_tr /= n
         total_translation_diff /= n
         total_angle_diff /= n
         self.val_writer.add_scalar('Loss', total_loss, epoch)
+        self.val_writer.add_scalar('Rotation Loss', total_loss_rot, epoch)
+        self.val_writer.add_scalar('Translation Loss', total_loss_tr, epoch)
         for i in range(self.num_joints):
             self.val_writer.add_scalar(f'joint_{i+1}: avg angle diff', (total_angle_diff[i] / np.pi) * 180, epoch)
             self.val_writer.add_scalar(f'joint_{i+1}: avg translation diff', total_translation_diff[i], epoch)
 
-        tqdm_update = "Val: Epoch={0:04d},loss={1:.4f}".format(epoch, total_loss)
+        tqdm_update = "Val  : Epoch={0:04d},loss={1:.4f}, rot_loss={2:.4f}, t_loss={3:.4f}".format(epoch, total_loss, total_loss_rot, total_loss_tr)
         tqdm_batch.set_postfix_str(tqdm_update)
         tqdm_batch.update()
         message = f"epoch: {epoch}, loss: {total_loss}"
@@ -251,33 +274,37 @@ class Agent:
             exit()
 
         self.model.eval()
-        for batch_idx, (Y, Z, F, avg_bone) in enumerate(self.test_data_loader):
-            bs = Y.shape[1]
-            Y, Z, F, avg_bone = Y.to(torch.float32).to(self.device).squeeze(0), Z.to(torch.float32).to(self.device).squeeze(0),\
-                                F.to(torch.float32).to(self.device).squeeze(0).unsqueeze(1), avg_bone.to(torch.float32).to(self.device).squeeze(-1)
+        with torch.no_grad():
+            for batch_idx, (Y, Z, F, avg_bone) in enumerate(self.test_data_loader):
+                bs = Y.shape[1]
+                Y, Z, F, avg_bone = Y.to(torch.float32).to(self.device).squeeze(0), Z.to(torch.float32).to(self.device).squeeze(0),\
+                                    F.to(torch.float32).to(self.device).squeeze(0).unsqueeze(1), avg_bone.to(torch.float32).to(self.device).squeeze(-1)
 
-            z_mu, z_cov = get_stat_Z(Z)
-            Z_sample = sample_Z(z_mu, z_cov, bs).view(-1, self.num_markers, self.num_joints, 3)
+                z_mu, z_cov = get_stat_Z(Z)
+                Z_sample = sample_Z(z_mu, z_cov, bs).view(-1, self.num_markers, self.num_joints, 3)
 
-            X = LBS(self.w, Y, Z_sample)
+                X = LBS(self.w, Y, Z_sample)
 
-            beta = 0.5 / (self.conv_to_m * avg_bone)
-            X_hat = corrupt(X, beta=beta)
-            Z_pw = preweighted_Z(self.w, Z_sample)
+                beta = 0.5 / (self.conv_to_m * avg_bone)
+                X_hat = corrupt(X, beta=beta)
+                Z_pw = preweighted_Z(self.w, Z_sample)
 
-            X = normalize_X(X_hat, X)
-            Z = normalize_Z_pw(Z_pw)
+                X = normalize_X(X_hat, X)
+                Z = normalize_Z_pw(Z_pw)
 
-            Y_hat = self.model(X, Z).view(bs, self.num_joints, 3, 4)
-            Y_hat = denormalize_Y(Y_hat, Y)
+                Y_hat = self.model(X, Z).view(bs, self.num_joints, 3, 4)
+                Y_hat = denormalize_Y(Y_hat, Y)
 
-            loss = self.user_weights * self.criterion(Y_hat, Y) / bs
+                loss_rot, loss_tr = self.criterion(Y_hat, Y)
+                loss_rot /= bs
+                loss_tr /= bs
+                loss = loss_tr + loss_rot
 
-            Y_hat_4x4 = xform_to_mat44_torch(Y_hat)
-            Y_ = F @ Y_hat_4x4
-            Y_ = Y_.cpu().detach().numpy()
-            np.save(f"asd.npy", Y_)
-            print("loss={0:.4f}".format(loss.item()))
+                Y_hat_4x4 = xform_to_mat44_torch(Y_hat)
+                Y_ = F @ Y_hat_4x4
+                Y_ = Y_.cpu().detach().numpy()
+                np.save(f"asd.npy", Y_)
+                print("loss={0:.4f}".format(loss.item()))
 
     def ls_solver(self):
         tqdm_batch = tqdm(total=self.train_steps, dynamic_ncols=True)
@@ -295,7 +322,7 @@ class Agent:
             # do preprocessing and get corrupted X and preweighted Z
             Y_hat = self.model(X, Z)
 
-            loss = self.user_weights * self.criterion(Y_hat, Y)
+            loss = self.criterion(Y_hat, Y)
             total_loss += loss.item()
 
             tqdm_update = "Loss={0:.4f}, L1={1:.4f}, reg={2:.4f}, Total={3:.4f}".format(loss.item(), l1_loss, l2_reg, total_loss)
@@ -304,6 +331,15 @@ class Agent:
 
         print("loss:", total_loss)
         tqdm_batch.close()
+
+
+    def custom_l1_loss(self, Y_hat, Y):
+        R_hat, t_hat = Y_hat[..., :3], Y_hat[..., 3:]
+        R, t = Y[..., :3], Y[..., 3:]
+        loss_rot = torch.sum(self.user_weights_rot * torch.abs(R_hat - R)) / 3
+        loss_tr = torch.sum(self.user_weights_t * torch.abs(t_hat - t))
+        return loss_rot, loss_tr
+
 
     def build_optimizer(self):
         optimizer = self.cfg.optimizer.used.lower()
@@ -316,7 +352,8 @@ class Agent:
                                     weight_decay=self.cfg.optimizer.AmsGrad.weight_decay, amsgrad=True)
 
     def build_loss_function(self):
-        return nn.L1Loss(reduction='sum')
+        return self.custom_l1_loss
+        # return nn.L1Loss(reduction='sum')
 
     def save_model(self, epoch):
         ckpt = {'model': self.model.state_dict(),

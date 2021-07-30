@@ -2,21 +2,22 @@
     "joint_to_marker": "dataset/joint_to_marker_one2one.txt",
     "csv_file": "dataset/meta_data.csv",
 
-    "train_filenames": "data/train_all.txt",
-    "val_filenames": "data/valid_all.txt",
+    "train_filenames": "data/train.txt",
+    "val_filenames": "data/valid.txt",
     "test_filenames": "data/test.txt",
 
-    "logs_dir": "logs/dif_svd/",
-    "model_dir": "logs/dif_svd/model.pth",
-    "train_sum": "logs/dif_svd/tensorboard/train",
-    "val_sum": "logs/dif_svd/tensorboard/val",
+    "logs_dir": "logs/dummy/",
+    "model_dir": "logs/dummy/model.pth",
+    "train_sum": "logs/dummy/tensorboard/train",
+    "val_sum": "logs/dummy/tensorboard/val",
 
     "use_gpu":true,
     "epochs": 40,
     "batch_size": 128,
     "num_markers": 41,
     "num_joints": 31,
-    "user_weights": 1.0,
+    "user_weights_rotation": [1.0, 1.0, 1.0, 1.0, 0.5, 0.25, 1.0, 1.0, 1.0, 0.5, 0.25, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.25, 0.25, 0.25, 0.25, 1.0, 1.0, 1.0, 0.25, 0.25, 0.25, 0.25],
+    "user_weights_translation": [1.0, 1.0, 1.0, 1.0, 1.0, 0.25, 1.0, 1.0, 1.0, 1.0, 0.25, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.25, 0.25, 0.25, 0.25, 1.0, 1.0, 1.0, 0.25, 0.25, 0.25, 0.25],
 
     "model":{
         "available": ["baseline", "least_square", "modified_baseline", "gnn"],
@@ -24,7 +25,7 @@
         "baseline": {
             "hidden_size":2048,
             "num_layers": 5,
-            "use_svd": true
+            "use_svd": false
         }
     },
 
@@ -38,7 +39,7 @@
             "lr": 0.001
         },
         "AmsGrad": {
-            "lr": 0.005,
+            "lr": 1e-4,
             "weight_decay": 0.01
         },
         "Step_LR": [15, 25, 35]
