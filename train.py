@@ -122,7 +122,7 @@ class Agent:
         tqdm_batch = tqdm(total=self.train_steps, dynamic_ncols=True) 
         total_loss = 0
         total_angle_diff = torch.zeros(self.num_joints, dtype=torch.float32, device=self.device)
-        total_translation_loss = torch.zeros(self.num_joints, dtype=torch.float32, device=self.device)
+        total_translation_diff = torch.zeros(self.num_joints, dtype=torch.float32, device=self.device)
         n = 0
 
         self.model.train()
@@ -156,19 +156,19 @@ class Agent:
             total_loss += loss.item() #/ (self.num_joints * 3 * 4)
             angle_diff, translation_diff = transformation_diff(Y_hat, Y)
             total_angle_diff += torch.sum(torch.abs(angle_diff), axis=0)
-            total_translation_loss += torch.sum(translation_diff, axis=0)
+            total_translation_diff += torch.sum(translation_diff, axis=0)
 
             tqdm_update = "Epoch={0:04d},loss={1:.4f}".format(epoch, loss.item() / bs)
             tqdm_batch.set_postfix_str(tqdm_update)
             tqdm_batch.update()
 
         total_loss /= n
-        total_translation_loss /= n
+        total_translation_diff /= n
         total_angle_diff /= n
         self.train_writer.add_scalar('Loss', total_loss, epoch)
         for i in range(self.num_joints):
             self.train_writer.add_scalar(f'joint_{i+1}: avg angle diff', (total_angle_diff[i] / np.pi) * 180, epoch)
-            self.train_writer.add_scalar(f'joint_{i+1}: avg translation diff', total_translation_loss[i], epoch)
+            self.train_writer.add_scalar(f'joint_{i+1}: avg translation diff', total_translation_diff[i], epoch)
 
         tqdm_update = "Train: Epoch={0:04d},loss={1:.4f}".format(epoch, total_loss)
         tqdm_batch.set_postfix_str(tqdm_update)
@@ -181,7 +181,7 @@ class Agent:
         tqdm_batch = tqdm(total=self.val_steps, dynamic_ncols=True)
         total_loss = 0
         total_angle_diff = torch.zeros(self.num_joints, dtype=torch.float32, device=self.device)
-        total_translation_loss = torch.zeros(self.num_joints, dtype=torch.float32, device=self.device)
+        total_translation_diff = torch.zeros(self.num_joints, dtype=torch.float32, device=self.device)
         n = 0
 
         self.model.eval()
@@ -210,19 +210,19 @@ class Agent:
                 total_loss += loss.item() #/ (self.num_joints * 3 * 4)
                 angle_diff, translation_diff = transformation_diff(Y_hat, Y)
                 total_angle_diff += torch.sum(torch.abs(angle_diff), axis=0)
-                total_translation_loss += torch.sum(translation_diff, axis=0)
+                total_translation_diff += torch.sum(translation_diff, axis=0)
 
                 tqdm_update = "Epoch={0:04d},loss={1:.4f}".format(epoch, loss.item() / bs)
                 tqdm_batch.set_postfix_str(tqdm_update)
                 tqdm_batch.update()
 
         total_loss /= n
-        total_translation_loss /= n
+        total_translation_diff /= n
         total_angle_diff /= n
         self.val_writer.add_scalar('Loss', total_loss, epoch)
         for i in range(self.num_joints):
             self.val_writer.add_scalar(f'joint_{i+1}: avg angle diff', (total_angle_diff[i] / np.pi) * 180, epoch)
-            self.val_writer.add_scalar(f'joint_{i+1}: avg translation diff', total_translation_loss[i], epoch)
+            self.val_writer.add_scalar(f'joint_{i+1}: avg translation diff', total_translation_diff[i], epoch)
 
         tqdm_update = "Val: Epoch={0:04d},loss={1:.4f}".format(epoch, total_loss)
         tqdm_batch.set_postfix_str(tqdm_update)

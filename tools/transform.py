@@ -151,7 +151,7 @@ def quaternion_to_axis_angle(quaternions):
 def transformation_diff(Y_hat, Y):
     Y_h = Y_hat.detach().clone()
     Y_ = Y.detach().clone()
-    R_hat, t_hat = Y_h[...,:3].transpose(-2, -1), Y_[..., 3]
+    R_hat, t_hat = Y_h[...,:3].transpose(-2, -1), Y_h[..., 3]
     t = Y_[..., 3]
     R = R_hat @ Y_[..., :3]
     translation_diff = torch.norm(t - t_hat, p=2, dim=2)
