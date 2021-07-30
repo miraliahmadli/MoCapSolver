@@ -121,6 +121,8 @@ class Agent:
     def train_per_epoch(self, epoch):
         tqdm_batch = tqdm(total=self.train_steps, dynamic_ncols=True) 
         total_loss = 0
+        total_angle_diff = torch.zeros(self.num_joints, dtype=torch.float32, device=self.device)
+        total_translation_loss = torch.zeros(self.num_joints, dtype=torch.float32, device=self.device)
         n = 0
 
         self.model.train()
@@ -153,20 +155,20 @@ class Agent:
 
             total_loss += loss.item() #/ (self.num_joints * 3 * 4)
             angle_diff, translation_diff = transformation_diff(Y_hat, Y)
-            angle_diff = torch.sum(torch.abs(angle_diff), axis=0)
-            translation_diff = torch.sum(translation_diff, axis=0)
+            total_angle_diff += torch.sum(torch.abs(angle_diff), axis=0)
+            total_translation_loss += torch.sum(translation_diff, axis=0)
 
             tqdm_update = "Epoch={0:04d},loss={1:.4f}".format(epoch, loss.item() / bs)
             tqdm_batch.set_postfix_str(tqdm_update)
             tqdm_batch.update()
 
         total_loss /= n
-        translation_diff /= n
-        angle_diff /= n
+        total_translation_loss /= n
+        total_angle_diff /= n
         self.train_writer.add_scalar('Loss', total_loss, epoch)
         for i in range(self.num_joints):
-            self.train_writer.add_scalar(f'joint_{i+1}: avg angle diff', angle_diff[i] / np.pi * 180, epoch)
-            self.train_writer.add_scalar(f'joint_{i+1}: avg translation diff', translation_diff[i], epoch)
+            self.train_writer.add_scalar(f'joint_{i+1}: avg angle diff', (total_angle_diff[i] / np.pi) * 180, epoch)
+            self.train_writer.add_scalar(f'joint_{i+1}: avg translation diff', total_translation_loss[i], epoch)
 
         tqdm_update = "Train: Epoch={0:04d},loss={1:.4f}".format(epoch, total_loss)
         tqdm_batch.set_postfix_str(tqdm_update)
@@ -178,6 +180,8 @@ class Agent:
     def val_per_epoch(self, epoch):
         tqdm_batch = tqdm(total=self.val_steps, dynamic_ncols=True)
         total_loss = 0
+        total_angle_diff = torch.zeros(self.num_joints, dtype=torch.float32, device=self.device)
+        total_translation_loss = torch.zeros(self.num_joints, dtype=torch.float32, device=self.device)
         n = 0
 
         self.model.eval()
@@ -205,20 +209,20 @@ class Agent:
                 loss = self.user_weights * self.criterion(Y_hat, Y)
                 total_loss += loss.item() #/ (self.num_joints * 3 * 4)
                 angle_diff, translation_diff = transformation_diff(Y_hat, Y)
-                angle_diff = torch.sum(torch.abs(angle_diff), axis=0)
-                translation_diff = torch.sum(translation_diff, axis=0)
+                total_angle_diff += torch.sum(torch.abs(angle_diff), axis=0)
+                total_translation_loss += torch.sum(translation_diff, axis=0)
 
                 tqdm_update = "Epoch={0:04d},loss={1:.4f}".format(epoch, loss.item() / bs)
                 tqdm_batch.set_postfix_str(tqdm_update)
                 tqdm_batch.update()
 
         total_loss /= n
-        translation_diff /= n
-        angle_diff /= n
+        total_translation_loss /= n
+        total_angle_diff /= n
         self.val_writer.add_scalar('Loss', total_loss, epoch)
         for i in range(self.num_joints):
-            self.val_writer.add_scalar(f'joint_{i+1}: avg angle diff', angle_diff[i] / np.pi * 180, epoch)
-            self.val_writer.add_scalar(f'joint_{i+1}: avg translation diff', translation_diff[i], epoch)
+            self.val_writer.add_scalar(f'joint_{i+1}: avg angle diff', (total_angle_diff[i] / np.pi) * 180, epoch)
+            self.val_writer.add_scalar(f'joint_{i+1}: avg translation diff', total_translation_loss[i], epoch)
 
         tqdm_update = "Val: Epoch={0:04d},loss={1:.4f}".format(epoch, total_loss)
         tqdm_batch.set_postfix_str(tqdm_update)
@@ -253,7 +257,7 @@ class Agent:
                                 F.to(torch.float32).to(self.device).squeeze(0).unsqueeze(1), avg_bone.to(torch.float32).to(self.device).squeeze(-1)
 
             z_mu, z_cov = get_stat_Z(Z)
-            Z_sample = sample_Z(z_mu, z_cov, self.batch_size).view(-1, self.num_markers, self.num_joints, 3)
+            Z_sample = sample_Z(z_mu, z_cov, bs).view(-1, self.num_markers, self.num_joints, 3)
 
             X = LBS(self.w, Y, Z_sample)
 
