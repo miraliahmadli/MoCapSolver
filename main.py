@@ -10,9 +10,9 @@ from train import Agent
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
-    parser.add_argument('-mode', type=str,
-                         default="train", help="tarining or testing")
-    parser.add_argument('-config', type=str,
+    parser.add_argument('--mode', type=str,
+                         default="train", help="training or testing")
+    parser.add_argument('--config', type=str,
                          default="configs/config.json", 
                          help="path to the config file")
 
