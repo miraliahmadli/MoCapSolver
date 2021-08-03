@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
-from torch.optim.lr_scheduler import MultiStepLR 
+from torch.optim.lr_scheduler import MultiStepLR, ExponentialLR 
 
 from mocap_dataset import MoCap
 from models.baseline import Baseline
@@ -41,7 +41,16 @@ class Agent:
         self.w = self.w.to(self.device)
         self.user_weights_rot = torch.tensor(self.user_weights_rot, device=self.device).unsqueeze(0).unsqueeze(-1).unsqueeze(-1) / 3
         self.user_weights_t = torch.tensor(self.user_weights_t, device=self.device).unsqueeze(0).unsqueeze(-1).unsqueeze(-1)
+        self.sampler = self.load_sampler()
         self.model = None
+
+    def load_sampler(self):
+        mu = np.load(self.cfg.sampler.mean_fname)
+        scale_tril = np.load(self.cfg.sampler.cholesky_fname)
+        mu = torch.FloatTensor(mu).to(self.device).view(-1)
+        scale_tril = torch.FloatTensor(scale_tril).to(self.device)
+
+        return torch.distributions.multivariate_normal.MultivariateNormal(loc=mu, scale_tril=scale_tril)
 
     def build_model(self):
         used = self.cfg.model.used.lower()
@@ -94,14 +103,13 @@ class Agent:
         if os.path.exists(self.checkpoint_dir):
             last_epoch = self.load_model()
 
-        self.scheduler = MultiStepLR(self.optimizer, milestones=self.cfg.optimizer.Step_LR,\
-                                    gamma=0.1, last_epoch=last_epoch-1)
+        self.scheduler = self.lr_scheduler(last_epoch)
+
         epochs = self.cfg.epochs
         self.train_writer = SummaryWriter(self.cfg.train_sum, "Train")
         self.val_writer = SummaryWriter(self.cfg.val_sum, "Val")
 
-        for epoch in range(last_epoch + 1, epochs + 1):
-            self.scheduler.step()
+        for epoch in range(last_epoch + 1, epochs + 1):            
             _, msg = self.train_per_epoch(epoch)
             train_loss_f.append(msg)
             if epoch > 1:
@@ -110,6 +118,8 @@ class Agent:
                 if loss < self.best_loss:
                     self.best_loss = loss
                     self.save_model(epoch)
+
+            self.scheduler.step()
 
         with open(self.cfg.logs_dir + "train_loss.txt", "w+") as f:
             for msg in train_loss_f:
@@ -131,13 +141,13 @@ class Agent:
         n = 0
 
         self.model.train()
-        for batch_idx, (Y, Z, _, avg_bone) in enumerate(self.train_data_loader):
+        for batch_idx, (Y, _, avg_bone) in enumerate(self.train_data_loader):
             bs = Y.shape[0]
             n += bs
-            Y, Z, avg_bone = Y.to(torch.float32), Z.to(torch.float32), avg_bone.to(torch.float32)
-            Y, Z, avg_bone = Y.to(self.device), Z.to(self.device), avg_bone.to(self.device).squeeze(-1)
+            Y, avg_bone = Y.to(torch.float32), avg_bone.to(torch.float32)
+            Y, avg_bone = Y.to(self.device), avg_bone.to(self.device).squeeze(-1)
 
-            Y_hat = self.run_batch(Y, Z, avg_bone, bs)
+            Y_hat = self.run_batch(Y, avg_bone, bs)
 
             loss_rot, loss_tr = self.criterion(Y_hat, Y)
             loss = loss_tr + loss_rot
@@ -169,7 +179,8 @@ class Agent:
         total_translation_diff /= n
         total_angle_diff *= 180 / (n * np.pi)
         losses = (total_loss, total_loss_rot, total_loss_tr)
-        self.write_summary(self.train_writer, losses, total_angle_diff, total_translation_diff, epoch)
+        if epoch != 1:
+            self.write_summary(self.train_writer, losses, total_angle_diff, total_translation_diff, epoch)
 
         tqdm_update = "Train: Epoch={0:04d},loss={1:.4f}, rot_loss={2:.4f}, t_loss={3:.4f}".format(epoch, total_loss, total_loss_rot, total_loss_tr)
         tqdm_batch.set_postfix_str(tqdm_update)
@@ -190,12 +201,12 @@ class Agent:
 
         self.model.eval()
         with torch.no_grad():
-            for batch_idx, (Y, Z, _, avg_bone) in enumerate(self.val_data_loader):
+            for batch_idx, (Y, _, avg_bone) in enumerate(self.val_data_loader):
                 bs = Y.shape[0]
                 n += bs
-                Y, Z, avg_bone = Y.to(torch.float32).to(self.device), Z.to(torch.float32).to(self.device), avg_bone.to(torch.float32).to(self.device).squeeze(-1)
+                Y, avg_bone = Y.to(torch.float32).to(self.device), avg_bone.to(torch.float32).to(self.device).squeeze(-1)
 
-                Y_hat = self.run_batch(Y, Z, avg_bone, bs)
+                Y_hat = self.run_batch(Y, avg_bone, bs)
 
                 loss_rot, loss_tr = self.criterion(Y_hat, Y)
                 loss = loss_tr + loss_rot
@@ -254,12 +265,12 @@ class Agent:
 
         self.model.eval()
         with torch.no_grad():
-            for batch_idx, (Y, Z, F, avg_bone) in enumerate(self.test_data_loader):
+            for batch_idx, (Y, F, avg_bone) in enumerate(self.test_data_loader):
                 bs = Y.shape[1]
-                Y, Z, F, avg_bone = Y.to(torch.float32).to(self.device).squeeze(0), Z.to(torch.float32).to(self.device).squeeze(0),\
-                                    F.to(torch.float32).to(self.device).squeeze(0).unsqueeze(1), avg_bone.to(torch.float32).to(self.device).squeeze(-1)
+                Y, F, avg_bone = Y.to(torch.float32).to(self.device).squeeze(0), F.to(torch.float32).to(self.device).squeeze(0).unsqueeze(1),\
+                                avg_bone.to(torch.float32).to(self.device).squeeze(-1)
 
-                Y_hat = self.run_batch(Y, Z, avg_bone, bs)
+                Y_hat = self.run_batch(Y, avg_bone, bs)
 
                 loss_rot, loss_tr = self.criterion(Y_hat, Y)
                 loss_rot /= bs
@@ -272,9 +283,8 @@ class Agent:
                 np.save(f"asd.npy", Y_)
                 print("loss={0:.4f}".format(loss.item()))
 
-    def run_batch(self, Y, Z, avg_bone, bs):
-        z_mu, z_cov = get_stat_Z(Z)
-        Z_sample = sample_Z(z_mu, z_cov, bs).view(-1, self.num_markers, self.num_joints, 3)
+    def run_batch(self, Y, avg_bone, bs):
+        Z_sample = self.sampler.sample((bs, )).view(-1, self.num_markers, self.num_joints, 3)
 
         X = LBS(self.w, Y, Z_sample)
 
@@ -315,7 +325,6 @@ class Agent:
         print("loss:", total_loss)
         tqdm_batch.close()
 
-
     def custom_l1_loss(self, Y_hat, Y):
         R_hat, t_hat = Y_hat[..., :3], Y_hat[..., 3:]
         R, t = Y[..., :3], Y[..., 3:]
@@ -323,6 +332,13 @@ class Agent:
         loss_tr = torch.sum(self.user_weights_t * torch.abs(t_hat - t))
         return loss_rot, loss_tr
 
+    def lr_scheduler(self, last_epoch):
+        scheduler = self.cfg.lr_scheduler.used
+        if scheduler == "ExponentialLR":
+            return ExponentialLR(optimizer=self.optimizer, gamma=self.cfg.lr_scheduler.ExponentialLR.decay)
+        elif scheduler == "MultiStepLR":
+            milestones = list(range(0, self.cfg.epochs, self.cfg.lr_scheduler.MultiStepLR.range))
+            return MultiStepLR(self.optimizer, milestones=milestones, gamma=0.1, last_epoch=last_epoch-1)
 
     def build_optimizer(self):
         optimizer = self.cfg.optimizer.used.lower()

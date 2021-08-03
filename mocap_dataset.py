@@ -52,7 +52,6 @@ class MoCap(Dataset):
             X_read = self.marker_data[..., index]
             avg_bone = self.avg_bone[index]
         Y_read = self.motion_data[index]
-        avg_bone = self.avg_bone[index]
         X_read = torch.tensor(X_read)
         Y_read = torch.tensor(Y_read)
         if not self.is_test:
@@ -60,7 +59,7 @@ class MoCap(Dataset):
             Y_read = Y_read.unsqueeze(0)
         avg_bone = torch.tensor(avg_bone)
 
-        X, Y, Z = clean_data(X_read, Y_read, avg_bone)
+        X, Y = clean_data(X_read, Y_read, avg_bone)
         F, Y = local_frame(X, Y, "cpu")
-        Y, Z = Y.squeeze(0), Z.squeeze(0)
-        return Y, Z, F, avg_bone
+        Y = Y.squeeze(0)
+        return Y, F, avg_bone

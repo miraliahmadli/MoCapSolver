@@ -19,6 +19,12 @@
     "user_weights_rotation": [1.0, 1.0, 1.0, 1.0, 0.5, 0.25, 1.0, 1.0, 1.0, 0.5, 0.25, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.25, 0.25, 0.25, 0.25, 1.0, 1.0, 1.0, 0.25, 0.25, 0.25, 0.25],
     "user_weights_translation": [1.0, 1.0, 1.0, 1.0, 1.0, 0.25, 1.0, 1.0, 1.0, 1.0, 0.25, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.25, 0.25, 0.25, 0.25, 1.0, 1.0, 1.0, 0.25, 0.25, 0.25, 0.25],
 
+    "sampler":{
+        "mean_fname": "dataset/z_stats/mean_z.npy",
+        "cov_fname": "dataset/z_stats/cov_z_2.npy",
+        "cholesky_fname": "dataset/z_stats/cholesky_z_2.npy"
+    },
+
     "model":{
         "available": ["baseline", "least_square", "modified_baseline", "gnn"],
         "used": "baseline",
@@ -41,7 +47,17 @@
         "AmsGrad": {
             "lr": 1e-4,
             "weight_decay": 0.01
+        }
+    },
+
+    "lr_scheduler": {
+        "available": ["ExponentialLR", "MultiStepLR"],
+        "used": "ExponentialLR",
+        "ExponentialLR":{
+            "decay": 0.96
         },
-        "Step_LR": [15, 25, 35]
+        "MultiStepLR":{
+            "range": 12
+        }
     }
 }

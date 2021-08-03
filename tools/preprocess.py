@@ -107,7 +107,6 @@ def clean_XYZ_torch(X_read, Y_read, avg_bone, m_conv=0.056444):
     nans = torch.isnan(X_read)[0].transpose(1, 0)
     nans_float = 1 - nans.to(torch.float32)
     nans_expand = torch.unsqueeze(nans_float, -1)
-    nans_expand2 = torch.unsqueeze(nans_expand, -1)
 
     avg_bone_m = avg_bone * m_conv
 
@@ -121,10 +120,7 @@ def clean_XYZ_torch(X_read, Y_read, avg_bone, m_conv=0.056444):
     Y = Y_read.clone()
     Y[..., 3] *= (1.0 / avg_bone)
 
-    Z = get_Z_torch(X, Y)
-    Z *= nans_expand2
-
-    return X, Y, Z
+    return X, Y
 
 
 def local_frame_np(X, Y):
