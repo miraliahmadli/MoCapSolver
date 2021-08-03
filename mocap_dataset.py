@@ -59,7 +59,7 @@ class MoCap(Dataset):
             Y_read = Y_read.unsqueeze(0)
         avg_bone = torch.tensor(avg_bone)
 
-        X, Y = clean_data(X_read, Y_read, avg_bone)
+        X, Y, Z = clean_data(X_read, Y_read, avg_bone)
         F, Y = local_frame(X, Y, "cpu")
-        Y = Y.squeeze(0)
-        return Y, F, avg_bone
+        Y, Z = Y.squeeze(0), Z.squeeze(0)
+        return Y, Z, F, avg_bone

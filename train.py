@@ -141,13 +141,13 @@ class Agent:
         n = 0
 
         self.model.train()
-        for batch_idx, (Y, _, avg_bone) in enumerate(self.train_data_loader):
+        for batch_idx, (Y, Z, _, avg_bone) in enumerate(self.train_data_loader):
             bs = Y.shape[0]
             n += bs
-            Y, avg_bone = Y.to(torch.float32), avg_bone.to(torch.float32)
-            Y, avg_bone = Y.to(self.device), avg_bone.to(self.device).squeeze(-1)
+            Y, Z, avg_bone = Y.to(torch.float32), Z.to(torch.float32), avg_bone.to(torch.float32)
+            Y, Z, avg_bone = Y.to(self.device), Z.to(self.device), avg_bone.to(self.device).squeeze(-1)
 
-            Y_hat = self.run_batch(Y, avg_bone, bs)
+            Y_hat = self.run_batch(Y, Z, avg_bone, bs)
 
             loss_rot, loss_tr = self.criterion(Y_hat, Y)
             loss = loss_tr + loss_rot
@@ -179,8 +179,7 @@ class Agent:
         total_translation_diff /= n
         total_angle_diff *= 180 / (n * np.pi)
         losses = (total_loss, total_loss_rot, total_loss_tr)
-        if epoch != 1:
-            self.write_summary(self.train_writer, losses, total_angle_diff, total_translation_diff, epoch)
+        self.write_summary(self.train_writer, losses, total_angle_diff, total_translation_diff, epoch)
 
         tqdm_update = "Train: Epoch={0:04d},loss={1:.4f}, rot_loss={2:.4f}, t_loss={3:.4f}".format(epoch, total_loss, total_loss_rot, total_loss_tr)
         tqdm_batch.set_postfix_str(tqdm_update)
@@ -201,12 +200,12 @@ class Agent:
 
         self.model.eval()
         with torch.no_grad():
-            for batch_idx, (Y, _, avg_bone) in enumerate(self.val_data_loader):
+            for batch_idx, (Y, Z, _, avg_bone) in enumerate(self.val_data_loader):
                 bs = Y.shape[0]
                 n += bs
-                Y, avg_bone = Y.to(torch.float32).to(self.device), avg_bone.to(torch.float32).to(self.device).squeeze(-1)
+                Y, Z, avg_bone = Y.to(torch.float32).to(self.device), Z.to(torch.float32).to(self.device), avg_bone.to(torch.float32).to(self.device).squeeze(-1)
 
-                Y_hat = self.run_batch(Y, avg_bone, bs)
+                Y_hat = self.run_batch(Y, Z, avg_bone, bs)
 
                 loss_rot, loss_tr = self.criterion(Y_hat, Y)
                 loss = loss_tr + loss_rot
@@ -265,12 +264,12 @@ class Agent:
 
         self.model.eval()
         with torch.no_grad():
-            for batch_idx, (Y, F, avg_bone) in enumerate(self.test_data_loader):
+            for batch_idx, (Y, Z, F, avg_bone) in enumerate(self.test_data_loader):
                 bs = Y.shape[1]
-                Y, F, avg_bone = Y.to(torch.float32).to(self.device).squeeze(0), F.to(torch.float32).to(self.device).squeeze(0).unsqueeze(1),\
-                                avg_bone.to(torch.float32).to(self.device).squeeze(-1)
+                Y, Z, F, avg_bone = Y.to(torch.float32).to(self.device).squeeze(0), Z.to(torch.float32).to(self.device).squeeze(0),\
+                                    F.to(torch.float32).to(self.device).squeeze(0).unsqueeze(1), avg_bone.to(torch.float32).to(self.device).squeeze(-1)
 
-                Y_hat = self.run_batch(Y, avg_bone, bs)
+                Y_hat = self.run_batch(Y, Z, avg_bone, bs)
 
                 loss_rot, loss_tr = self.criterion(Y_hat, Y)
                 loss_rot /= bs
@@ -283,10 +282,16 @@ class Agent:
                 np.save(f"asd.npy", Y_)
                 print("loss={0:.4f}".format(loss.item()))
 
-    def run_batch(self, Y, avg_bone, bs):
-        Z_sample = self.sampler.sample((bs, )).view(-1, self.num_markers, self.num_joints, 3)
+    def run_batch(self, Y, Z, avg_bone, bs):
+        # Z_sample = self.sampler.sample((bs, )).view(-1, self.num_markers, self.num_joints, 3)
+        z_mu, z_cov = get_stat_Z(Z)
+        Z_sample = sample_Z(z_mu, z_cov, bs).view(-1, self.num_markers, self.num_joints, 3)
 
         X = LBS(self.w, Y, Z_sample)
+
+        np.save("X_sample_single_batch.npy", X.detach().cpu().numpy())
+        np.save("Y_sample_single_batch.npy", Y.detach().cpu().numpy())
+        exit()
 
         beta = 0.5 / (self.conv_to_m * avg_bone)
         X_hat = corrupt(X, beta=beta)
