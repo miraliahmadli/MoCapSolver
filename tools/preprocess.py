@@ -10,6 +10,13 @@ main_labels =\
         'RELB', 'RFHD', 'RFIN', 'RFRM', 'RFWT', 'RHEE', 'RKNE', 'RMT5', 
         'RSHN', 'RSHO', 'RTHI', 'RTOE', 'RUPA', 'RWRA', 'RWRB', 'STRN', 'T10']
 
+main_joints = \
+        ['root', 'lhipjoint', 'lfemur', 'ltibia', 'lfoot', 'ltoes',
+        'rhipjoint', 'rfemur', 'rtibia', 'rfoot', 'rtoes', 'lowerback',
+        'upperback', 'thorax', 'lowerneck', 'upperneck', 'head', 'lclavicle',
+        'lhumerus', 'lradius', 'lwrist', 'lhand', 'lfingers', 'lthumb',
+        'rclavicle', 'rhumerus', 'rradius', 'rwrist', 'rhand', 'rfingers', 'rthumb']
+
 local_frame_markers = [4, 9, 23, 28, 39, 40]
 local_frame_joint = 11
 
