@@ -10,10 +10,10 @@ c3d_dir = "dataset/all_c3d/subjects"
 c3d_folders = os.listdir(c3d_dir)
 two_subject_folders = ['18', '19', '20', '21', '22', '23', '33', '34']
 
-two_subjects = [('18', '19'), ('20', '21'), ('22', '23'), ('33', '34')]
+two_subjects = [('18', '19'), ('20', '21'), ('22', '23'), ('33', '34'), ("60", "61")]
 subject_names =\
         [("Justin", 'rory'), ("Justin1", 'rory1'), 
-        ("justin", "Rory"), ("Justin", "TwoSubject1")]
+        ("justin", "Rory"), ("Justin", "TwoSubject1"), ("dancerfemale", "dancermale")]
 main_labels =\
         ['C7', 'CLAV', 'LANK', 'LBHD', 'LBWT', 'LELB', 'LFHD', 'LFIN', 
         'LFRM', 'LFWT', 'LHEE', 'LKNE', 'LMT5', 'LSHN', 'LSHO', 'LTHI', 
