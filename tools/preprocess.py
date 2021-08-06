@@ -77,59 +77,57 @@ def get_Z_torch(X, Y):
 def clean_XYZ_np(X_read, Y_read, avg_bone, m_conv=0.056444):
     '''
     Clean XYZ
-
+​
     Parameters:
         X_read: global marker positions read from the npy, dim: (4, m, n)
         Y: rotation + translation matrices read from the npy, dim: (n, j, 3, 4)
-
+​
     Return:
         X: cleaned global marker positions, dim: (n, m, 3)
         Y: cleaned rotation + translation matrices, dim: (n, j, 3, 4)
         Z: local offsets, dim: (n, m, j, 3)
     '''
-    nans = np.isnan(X_read)[0].transpose(1, 0) # n x m
-    nans_float = 1 - nans.astype(float)
-    nans_expand = np.expand_dims(nans_float, 2) # n x m x 1
-    nans_expand2 = np.expand_dims(nans_expand, 3) # n x m x 1
-    
     avg_bone_m = avg_bone * m_conv
 
-    X = np.nan_to_num(X_read)
+    X = np.nan_to_num(X_read, nan=0.0, posinf=0.0, neginf=0.0)
     X = X.transpose(2, 1, 0)
-    X *= nans_expand
     X = X[..., : 3]
+    
+    zeros = (X == 0.0)
+    nans = ~(zeros.any(axis=-1).any(axis=-1))
+
+    X = X[nans]
     X *= (1.0 / (avg_bone_m)) * 0.001
     X = X[..., [1, 2, 0]]
 
-    Y = np.copy(Y_read)
+    Y = Y_read.copy()
+    Y = Y[nans]
     Y[..., 3] *= (1.0 / avg_bone)
-    
+
     Z = get_Z_np(X, Y)
-    Z *= nans_expand2
 
     return X, Y, Z
 
 
 def clean_XYZ_torch(X_read, Y_read, avg_bone, m_conv=0.056444):
-    nans = torch.isnan(X_read)[0].transpose(1, 0)
-    nans_float = 1 - nans.to(torch.float32)
-    nans_expand = torch.unsqueeze(nans_float, -1)
-    nans_expand2 = torch.unsqueeze(nans_expand, -1)
-
     avg_bone_m = avg_bone * m_conv
 
-    X = torch.nan_to_num(X_read)
+    X = torch.nan_to_num(X_read, nan=0.0, posinf=0.0, neginf=0.0)
     X = X.permute(2, 1, 0)
-    X *= nans_expand
     X = X[..., : 3]
+
+    zeros = (X == 0.0)
+    nans = ~(zeros.any(dim=-1).any(dim=-1))
+
+    X = X[nans]
     X *= (1.0 / (avg_bone_m)) * 0.001
     X = X[..., [1, 2, 0]]
 
     Y = Y_read.clone()
+    Y = Y[nans]
     Y[..., 3] *= (1.0 / avg_bone)
 
     Z = get_Z_torch(X, Y)
-    Z *= nans_expand2
 
     return X, Y, Z
 
