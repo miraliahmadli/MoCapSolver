@@ -74,7 +74,7 @@ def get_Z_torch(X, Y):
     return Z
 
 
-def clean_XYZ_np(X_read, Y_read, avg_bone, m_conv=0.056444):
+def clean_XY_np(X_read, Y_read, avg_bone_read, m_conv= 0.57803):#0.056444):
     '''
     Clean XYZ
 ​
@@ -87,49 +87,43 @@ def clean_XYZ_np(X_read, Y_read, avg_bone, m_conv=0.056444):
         Y: cleaned rotation + translation matrices, dim: (n, j, 3, 4)
         Z: local offsets, dim: (n, m, j, 3)
     '''
-    avg_bone_m = avg_bone * m_conv
-
     X = np.nan_to_num(X_read, nan=0.0, posinf=0.0, neginf=0.0)
     X = X.transpose(2, 1, 0)
     X = X[..., : 3]
     
     zeros = (X == 0.0)
     nans = ~(zeros.any(axis=-1).any(axis=-1))
+    avg_bone = avg_bone_read[nans]
 
     X = X[nans]
-    X *= (1.0 / (avg_bone_m)) * 0.001
+    X *= (0.01 / (avg_bone[..., None] * m_conv))
     X = X[..., [1, 2, 0]]
 
     Y = Y_read.copy()
     Y = Y[nans]
-    Y[..., 3] *= (1.0 / avg_bone)
+    Y[..., 3] *= (1.0 / avg_bone[..., None])
 
-    Z = get_Z_np(X, Y)
-
-    return X, Y, Z
+    return X, Y, avg_bone
 
 
-def clean_XYZ_torch(X_read, Y_read, avg_bone, m_conv=0.056444):
-    avg_bone_m = avg_bone * m_conv
-
+def clean_XY_torch(X_read, Y_read, avg_bone_read, m_conv= 0.57803):#0.056444):
     X = torch.nan_to_num(X_read, nan=0.0, posinf=0.0, neginf=0.0)
     X = X.permute(2, 1, 0)
     X = X[..., : 3]
 
     zeros = (X == 0.0)
     nans = ~(zeros.any(dim=-1).any(dim=-1))
+    avg_bone = avg_bone_read[nans]
 
     X = X[nans]
-    X *= (1.0 / (avg_bone_m)) * 0.001
+    X *= (0.01 / (avg_bone[..., None] * m_conv))
     X = X[..., [1, 2, 0]]
 
     Y = Y_read.clone()
     Y = Y[nans]
-    Y[..., 3] *= (1.0 / avg_bone)
+    Y[..., 3] *= (1.0 / avg_bone[..., None])
 
-    Z = get_Z_torch(X, Y)
-
-    return X, Y, Z
+    return X, Y, avg_bone
 
 
 def local_frame_np(X, Y):

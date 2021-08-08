@@ -6,7 +6,9 @@ import multiprocess
 import torch
 from torch.utils.data import Dataset
 
-from tools.preprocess import clean_XYZ_torch as clean_data
+# from tools.preprocess import clean_XY_torch as clean_data
+from tools.preprocess import clean_XY_np as clean_data
+from tools.preprocess import get_Z_torch as get_Z
 from tools.preprocess import local_frame_torch as local_frame
 
 class MoCap(Dataset):
@@ -23,15 +25,18 @@ class MoCap(Dataset):
             marker_path, motion_path, avg_bone = inputs
             X_read = np.load(marker_path)
             Y_read = np.load(motion_path)
-            avg_bone = np.broadcast_to(avg_bone, (Y_read.shape[0], 1))
-            return (X_read, Y_read, avg_bone)
+            avg_bone_read = np.broadcast_to(avg_bone, (Y_read.shape[0], 1))
+            X, Y, avg_bone = clean_data(X_read, Y_read, avg_bone_read)
+            assert X.shape[0] == Y.shape[0]
+            assert X.shape[0] == avg_bone.shape[0]
+            return (X, Y, avg_bone)
 
         fnames = zip(self.df["marker_npy_path"].values,\
                         self.df["motion_npy_path"].values, self.df["avg_bone"].values)
         with multiprocess.Pool(processes = os.cpu_count()) as pool:
             data = pool.map(read_files, fnames)
 
-        self.marker_data = np.concatenate([x[0] for x in data], -1)
+        self.marker_data = np.concatenate([x[0] for x in data], 0)
         self.motion_data = np.concatenate([x[1] for x in data], 0)
         self.avg_bone = np.concatenate([x[2] for x in data], 0)
 
@@ -46,20 +51,19 @@ class MoCap(Dataset):
 
     def __getitem__(self, index):
         if self.is_test:
-            X_read = self.marker_data[index]
             avg_bone = self.avg_bone[:]
         else:
-            X_read = self.marker_data[..., index]
             avg_bone = self.avg_bone[index]
-        Y_read = self.motion_data[index]
-        X_read = torch.tensor(X_read)
-        Y_read = torch.tensor(Y_read)
+        X = self.marker_data[index]
+        Y = self.motion_data[index]
+        X = torch.tensor(X)
+        Y = torch.tensor(Y)
         if not self.is_test:
-            X_read = X_read.unsqueeze(-1)
-            Y_read = Y_read.unsqueeze(0)
+            X = X.unsqueeze(0)
+            Y = Y.unsqueeze(0)
         avg_bone = torch.tensor(avg_bone)
 
-        X, Y, Z = clean_data(X_read, Y_read, avg_bone)
+        Z = get_Z(X, Y)
         F, Y = local_frame(X, Y, "cpu")
         Y, Z = Y.squeeze(0), Z.squeeze(0)
         return Y, Z, F, avg_bone

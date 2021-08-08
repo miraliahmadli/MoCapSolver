@@ -24,7 +24,7 @@ class Agent:
         self.cfg = cfg
         self.checkpoint_dir = cfg.model_dir
         self.is_test = test
-        self.conv_to_m = 0.056444
+        self.conv_to_m = 0.57803
 
         self.num_markers = cfg.num_markers
         self.num_joints = cfg.num_joints
@@ -45,7 +45,7 @@ class Agent:
         self.model = None
 
     def load_sampler(self):
-        mu = np.load(self.cfg.sampler.mean_fname)
+        mu = np.load(self.cfg.sampler.mean_fname).reshape((self.num_markers,self.num_joints,3))
         scale_tril = np.load(self.cfg.sampler.cholesky_fname)
         mu = torch.FloatTensor(mu).to(self.device).view(-1)
         scale_tril = torch.FloatTensor(scale_tril).to(self.device)
@@ -112,12 +112,11 @@ class Agent:
         for epoch in range(last_epoch + 1, epochs + 1):            
             _, msg = self.train_per_epoch(epoch)
             train_loss_f.append(msg)
-            if epoch > 1:
-                loss, msg = self.val_per_epoch(epoch)
-                val_loss_f.append(msg)
-                if loss < self.best_loss:
-                    self.best_loss = loss
-                    self.save_model(epoch)
+            loss, msg = self.val_per_epoch(epoch)
+            val_loss_f.append(msg)
+            if loss < self.best_loss:
+                self.best_loss = loss
+                self.save_model(epoch)
 
             self.scheduler.step()
 
@@ -283,17 +282,10 @@ class Agent:
                 print("loss={0:.4f}".format(loss.item()))
 
     def run_batch(self, Y, Z, avg_bone, bs):
-        # Z_sample = self.sampler.sample((bs, )).view(-1, self.num_markers, self.num_joints, 3)
-        z_mu, z_cov = get_stat_Z(Z)
-        Z_sample = sample_Z(z_mu, z_cov, bs).view(-1, self.num_markers, self.num_joints, 3)
+        Z_sample = self.sampler.sample((bs, )).view(-1, self.num_markers, self.num_joints, 3)
 
         X = LBS(self.w, Y, Z_sample)
-
-        np.save("X_sample_single_batch.npy", X.detach().cpu().numpy())
-        np.save("Y_sample_single_batch.npy", Y.detach().cpu().numpy())
-        exit()
-
-        beta = 0.5 / (self.conv_to_m * avg_bone)
+        beta = 0.05 / (self.conv_to_m * avg_bone)    
         X_hat = corrupt(X, beta=beta)
         Z_pw = preweighted_Z(self.w, Z_sample)
 
