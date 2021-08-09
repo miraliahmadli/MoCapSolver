@@ -6,24 +6,26 @@ import torch
 import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
-from torch.optim.lr_scheduler import MultiStepLR, ExponentialLR 
+from torch.optim.lr_scheduler import MultiStepLR, ExponentialLR
+import wandb
 
 from mocap_dataset import MoCap
 from models.baseline import Baseline
 from tools.utils import svd_rot_torch as svd_solver
 from tools.utils import LBS_torch as LBS
 from tools.utils import corrupt_torch as corrupt
-from tools.utils import preweighted_Z, xform_to_mat44_torch
+from tools.utils import preweighted_Z, xform_to_mat44_torch, symmetric_orthogonalization
 from tools.preprocess import weight_assign
 from tools.statistics import *
 from tools.transform import transformation_diff
 
 
 class Agent:
-    def __init__(self, cfg, test=False):
+    def __init__(self, cfg, test=False, sweep=False):
         self.cfg = cfg
         self.checkpoint_dir = cfg.model_dir
         self.is_test = test
+        self.is_sweep = sweep
         self.conv_to_m = 0.57803
 
         self.num_markers = cfg.num_markers
@@ -93,6 +95,20 @@ class Agent:
         val_loss_f = []
         train_loss_f =[]
 
+        wandb.init(config=self.default_cfg(), project='denoising', entity='mocap')
+        if self.is_sweep:
+            sweep_config = wandb.config
+            model_used = self.cfg.model.used.lower()
+            optimizer_used = self.cfg.optimizer.used.lower()
+            scheduler_used = self.cfg.lr_scheduler.used
+            if model_used == "baseline":
+                self.cfg.model.baseline.use_svd = sweep_config.use_svd
+            if optimizer_used == "amsgrad":
+                self.cfg.optimizer.AmsGrad.lr = sweep_config.lr
+            if scheduler_used == "ExponentialLR":
+                self.cfg.lr_scheduler.ExponentialLR.decay = sweep_config.decay
+
+
         self.build_model()
         self.criterion = self.build_loss_function()
         self.optimizer = self.build_optimizer()
@@ -100,8 +116,8 @@ class Agent:
         self.load_data()
 
         last_epoch = 0
-        if os.path.exists(self.checkpoint_dir):
-            last_epoch = self.load_model()
+        # if os.path.exists(self.checkpoint_dir):
+        #     last_epoch = self.load_model()
 
         self.scheduler = self.lr_scheduler(last_epoch)
 
@@ -164,7 +180,12 @@ class Agent:
             Y_ = Y.detach().clone()
             Y_h[..., 3] *= (self.conv_to_m * avg_bone * 100)
             Y_[..., 3] *= (self.conv_to_m * avg_bone * 100)
-            angle_diff, translation_diff = transformation_diff(Y_h, Y_)
+            
+            Y_h_orth = Y_h.clone().view(-1, 3, 4)
+            Y_h_orth[..., :3] = symmetric_orthogonalization(Y_h_orth[..., :3].clone()).clone()
+            Y_h_orth = Y_h_orth.view(-1, self.num_joints, 3, 4)
+
+            angle_diff, translation_diff = transformation_diff(Y_h_orth, Y_)
             total_angle_diff += torch.sum(torch.abs(angle_diff), axis=0)
             total_translation_diff += torch.sum(translation_diff, axis=0)
 
@@ -179,6 +200,8 @@ class Agent:
         total_angle_diff *= 180 / (n * np.pi)
         losses = (total_loss, total_loss_rot, total_loss_tr)
         self.write_summary(self.train_writer, losses, total_angle_diff, total_translation_diff, epoch)
+        self.wandb_summary(True, losses, total_angle_diff, total_translation_diff)
+
 
         tqdm_update = "Train: Epoch={0:04d},loss={1:.4f}, rot_loss={2:.4f}, t_loss={3:.4f}".format(epoch, total_loss, total_loss_rot, total_loss_tr)
         tqdm_batch.set_postfix_str(tqdm_update)
@@ -218,7 +241,12 @@ class Agent:
                 Y_ = Y.detach().clone()
                 Y_h[..., 3] *= (self.conv_to_m * avg_bone * 100)
                 Y_[..., 3] *= (self.conv_to_m * avg_bone * 100)
-                angle_diff, translation_diff = transformation_diff(Y_h, Y_)
+
+                Y_h_orth = Y_h.clone().view(-1, 3, 4)
+                Y_h_orth[..., :3] = symmetric_orthogonalization(Y_h_orth[..., :3].clone()).clone()
+                Y_h_orth = Y_h_orth.view(-1, self.num_joints, 3, 4)
+
+                angle_diff, translation_diff = transformation_diff(Y_h_orth, Y_)
                 total_angle_diff += torch.sum(torch.abs(angle_diff), axis=0)
                 total_translation_diff += torch.sum(translation_diff, axis=0)
 
@@ -233,6 +261,7 @@ class Agent:
         total_angle_diff *= 180 / (n * np.pi)
         losses = (total_loss, total_loss_rot, total_loss_tr)
         self.write_summary(self.val_writer, losses, total_angle_diff, total_translation_diff, epoch)
+        self.wandb_summary(False, losses, total_angle_diff, total_translation_diff)
 
         tqdm_update = "Val  : Epoch={0:04d},loss={1:.4f}, rot_loss={2:.4f}, t_loss={3:.4f}".format(epoch, total_loss, total_loss_rot, total_loss_tr)
         tqdm_batch.set_postfix_str(tqdm_update)
@@ -350,6 +379,13 @@ class Agent:
     def build_loss_function(self):
         return self.custom_l1_loss
         # return nn.L1Loss(reduction='sum')
+    
+    def default_cfg(self):
+        return {
+            "use_svd": self.cfg.model.baseline.use_svd,
+            "lr": self.cfg.optimizer.AmsGrad.lr,
+            "decay": self.cfg.lr_scheduler.ExponentialLR.decay
+        }
 
     def save_model(self, epoch):
         ckpt = {'model': self.model.state_dict(),
@@ -376,4 +412,28 @@ class Agent:
             summary_writer.add_scalar(f'joint_{i+1}: avg angle diff', ang_diff[i], epoch)
             summary_writer.add_scalar(f'joint_{i+1}: avg translation diff', tr_diff[i], epoch)
         summary_writer.add_scalar('Rotational Error (deg)', torch.mean(ang_diff), epoch)
-        summary_writer.add_scalar('Positional Error (mm)', torch.mean(tr_diff), epoch)
+        summary_writer.add_scalar('Translation Error (mm)', torch.mean(tr_diff), epoch)
+
+    
+    def wandb_summary(self, training, losses, ang_diff, tr_diff):
+        total_loss, total_loss_rot, total_loss_tr = losses
+        if not training:
+            wandb.log({'Validation Loss': total_loss})
+            wandb.log({'Validation Rotation Loss': total_loss_rot})
+            wandb.log({'Validation Translation Loss': total_loss_tr})
+            for i in range(self.num_joints):
+                wandb.log({f'Validation joint_{i+1}: Avg rotation error': ang_diff[i]})
+                wandb.log({f'Validation joint_{i+1}: Avg translation error': tr_diff[i]})
+            wandb.log({'Validation Rotation Error (deg)': torch.mean(ang_diff)})
+            wandb.log({'Validation Translation Error (mm)': torch.mean(tr_diff)})
+        else:
+            wandb.log({'Training Loss': total_loss})
+            wandb.log({'Training Rotation Loss': total_loss_rot})
+            wandb.log({'Training Translation Loss': total_loss_tr})
+            for i in range(self.num_joints):
+                wandb.log({f'Training joint_{i+1}: Avg rotation error': ang_diff[i]})
+                wandb.log({f'Training joint_{i+1}: Avg translation error': tr_diff[i]})
+            wandb.log({'Training Rotation Error (deg)': torch.mean(ang_diff)})
+            wandb.log({'Training Translation Error (mm)': torch.mean(tr_diff)})
+
+

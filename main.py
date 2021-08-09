@@ -4,6 +4,7 @@ import json
 import time
 import argparse
 from easydict import EasyDict
+import wandb
 
 from train import Agent
 
@@ -11,10 +12,13 @@ from train import Agent
 def parse_arguments():
     parser = argparse.ArgumentParser()
     parser.add_argument('--mode', type=str,
-                         default="train", help="training or testing")
+                         default="train", help="training, testing or sweep")
     parser.add_argument('--config', type=str,
                          default="configs/config.json", 
                          help="path to the config file")
+    parser.add_argument('--sweep-config', type=str,
+                         default="configs/sweep_config.json",
+                         help="wandb.ai sweep config")
 
     args = parser.parse_args()
     return args
@@ -36,6 +40,14 @@ def main():
     elif args.mode == "test":
         agent = Agent(cfg, True)
         agent.test_one_animation()
+    elif args.mode == "sweep":
+        with open(args.sweep_config) as f:
+            sweep_cfg = json.loads(f.read())
+        sweep_id = wandb.sweep(sweep_cfg, project='denoising', entity='mocap')
+        cfg.sweep_id = sweep_id
+        agent = Agent(cfg, sweep=True)
+        wandb.agent(sweep_id, agent.train)
+
     else:
         raise NotImplementedError
 
