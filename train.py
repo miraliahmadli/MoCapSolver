@@ -11,6 +11,7 @@ import wandb
 
 from mocap_dataset import MoCap
 from models.baseline import Baseline
+from models.least_square import LS_solver
 from tools.utils import svd_rot_torch as svd_solver
 from tools.utils import LBS_torch as LBS
 from tools.utils import corrupt_torch as corrupt
@@ -36,7 +37,10 @@ class Agent:
         self.user_weights_t = cfg.user_weights_translation
         self.w = weight_assign(cfg.joint_to_marker, cfg.num_markers, cfg.num_joints)
 
-        self.device = torch.device('cuda' if self.cfg.use_gpu and torch.cuda.is_available() else 'cpu')
+        if self.cfg.use_gpu and torch.cuda.is_available():
+            self.device =  torch.device(f'cuda:{self.cfg.gpu_idx}')
+        else:
+            self.device = torch.device("cpu")
         print(self.device)
         if self.cfg.use_gpu and torch.cuda.is_available():
             print(torch.cuda.get_device_name(torch.cuda.current_device()))
@@ -63,8 +67,9 @@ class Agent:
             
             self.model = Baseline(self.num_markers, self.num_joints, hidden_size, num_layers, use_svd)
         elif used == "least_square":
-            # TODO: train loop for LS problem
-            self.model = None
+            # w = weight_assign('dataset/joint_to_marker_three2one.txt').to(self.device)
+            w = torch.ones((31, 41)).to(self.device)
+            self.model = LS_solver(self.num_joints, w, self.device)
         else:
             raise NotImplementedError
         # if torch.cuda.device_count() > 1:
@@ -284,18 +289,19 @@ class Agent:
         self.model.to(self.device)
         self.criterion = self.build_loss_function()
 
-        if os.path.exists(self.checkpoint_dir):
-            self.load_model()
-        else:
-            print("There is no saved model")
-            exit()
+        if self.cfg.model.used.lower() != "least_square":
+            if os.path.exists(self.checkpoint_dir):
+                self.load_model()
+            else:
+                print("There is no saved model")
+                exit()
 
         self.model.eval()
         with torch.no_grad():
             for batch_idx, (Y, Z, F, avg_bone) in enumerate(self.test_data_loader):
-                bs = Y.shape[1]
                 Y, Z, F, avg_bone = Y.to(torch.float32).to(self.device).squeeze(0), Z.to(torch.float32).to(self.device).squeeze(0),\
                                     F.to(torch.float32).to(self.device).squeeze(0).unsqueeze(1), avg_bone.to(torch.float32).to(self.device).squeeze(-1)
+                bs = Y.shape[0]
 
                 Y_hat = self.run_batch(Y, Z, avg_bone, bs)
 
@@ -304,7 +310,7 @@ class Agent:
                 loss_tr /= bs
                 loss = loss_tr + loss_rot
 
-                Y_hat_4x4 = xform_to_mat44_torch(Y_hat)
+                Y_hat_4x4 = xform_to_mat44_torch(Y_hat, self.device)
                 Y_ = F @ Y_hat_4x4
                 Y_ = Y_.cpu().detach().numpy()
                 np.save(f"asd.npy", Y_)
@@ -313,43 +319,22 @@ class Agent:
     def run_batch(self, Y, Z, avg_bone, bs):
         Z_sample = self.sampler.sample((bs, )).view(-1, self.num_markers, self.num_joints, 3)
 
-        X = LBS(self.w, Y, Z_sample)
-        beta = 0.05 / (self.conv_to_m * avg_bone)    
-        X_hat = corrupt(X, beta=beta)
-        Z_pw = preweighted_Z(self.w, Z_sample)
+        X = LBS(self.w, Y, Z, device=self.device)
+        beta = 0.05 / (self.conv_to_m * avg_bone)
+        X_hat = corrupt(X, beta=beta.view(-1), device=self.device)
 
-        X = normalize_X(X_hat, X)
-        Z = normalize_Z_pw(Z_pw)
+        if self.cfg.model.used.lower() == "least_square":
+            Z = Z_sample
+            X = X_hat
+        else:
+            X = normalize_X(X_hat, X)
+            Z_pw = preweighted_Z(self.w, Z_sample)        
+            Z = normalize_Z_pw(Z_pw)
 
         Y_hat = self.model(X, Z).view(bs, self.num_joints, 3, 4)
-        Y_hat = denormalize_Y(Y_hat, Y)
+        if self.cfg.model.used.lower() != "least_square":
+            Y_hat = denormalize_Y(Y_hat, Y)
         return Y_hat
-
-    def ls_solver(self):
-        tqdm_batch = tqdm(total=self.train_steps, dynamic_ncols=True)
-        self.build_model()
-        self.criterion = self.build_loss_function()
-        self.load_data()
-
-        total_loss = 0
-        for batch_idx, (X, Y, Z, F, avg_bone) in enumerate(self.val_data_loader):
-            X, Y, Z, F, avg_bone = X.to(torch.float32), Y.to(torch.float32),\
-                        Z.to(torch.float32), F.to(torch.float32), avg_bone.to(torch.float32)
-            X, Y, Z, F, avg_bone = X.to(self.device), Y.to(self.device), Z.to(self.device), F.to(self.device), avg_bone.to(self.device).squeeze(-1)
-
-            # TODO:
-            # do preprocessing and get corrupted X and preweighted Z
-            Y_hat = self.model(X, Z)
-
-            loss = self.criterion(Y_hat, Y)
-            total_loss += loss.item()
-
-            tqdm_update = "Loss={0:.4f}, L1={1:.4f}, reg={2:.4f}, Total={3:.4f}".format(loss.item(), l1_loss, l2_reg, total_loss)
-            tqdm_batch.set_postfix_str(tqdm_update)
-            tqdm_batch.update()
-
-        print("loss:", total_loss)
-        tqdm_batch.close()
 
     def custom_l1_loss(self, Y_hat, Y):
         R_hat, t_hat = Y_hat[..., :3], Y_hat[..., 3:]

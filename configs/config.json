@@ -1,17 +1,18 @@
 {
-    "joint_to_marker": "dataset/joint_to_marker_one2one.txt",
+    "joint_to_marker": "dataset/joint_to_marker_viz.txt",
     "csv_file": "dataset/meta_data.csv",
 
-    "train_filenames": "data/train.txt",
-    "val_filenames": "data/valid.txt",
+    "train_filenames": "data/train_all.txt",
+    "val_filenames": "data/valid_all.txt",
     "test_filenames": "data/test.txt",
 
-    "logs_dir": "logs/dummy/",
-    "model_dir": "logs/dummy/model.pth",
-    "train_sum": "logs/dummy/tensorboard/train",
-    "val_sum": "logs/dummy/tensorboard/val",
+    "logs_dir": "logs/check2/",
+    "model_dir": "logs/check2/model.pth",
+    "train_sum": "logs/check2/tensorboard/train",
+    "val_sum": "logs/check2/tensorboard/val",
 
     "use_gpu":true,
+    "gpu_idx":0,
     "epochs": 40,
     "batch_size": 256,
     "num_markers": 41,
@@ -20,9 +21,8 @@
     "user_weights_translation": [1.0, 1.0, 1.0, 1.0, 1.0, 0.25, 1.0, 1.0, 1.0, 1.0, 0.25, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.25, 0.25, 0.25, 0.25, 1.0, 1.0, 1.0, 0.25, 0.25, 0.25, 0.25],
 
     "sampler":{
-        "mean_fname": "dataset/z_stats/mean_z.npy",
-        "cov_fname": "dataset/z_stats/cov_z_2.npy",
-        "cholesky_fname": "dataset/z_stats/cholesky_z_2.npy"
+        "mean_fname": "dataset/z_stats/mu_z_last2.npy",
+        "cholesky_fname": "dataset/z_stats/cholesky_z_last2.npy"
     },
 
     "model":{
