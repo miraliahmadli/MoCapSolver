@@ -136,3 +136,4 @@ dmypy.json
 *.c3d
 logs/
 data/
+wandb/
