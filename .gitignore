@@ -134,6 +134,7 @@ dmypy.json
 *.amc
 *.asf
 *.c3d
+*.bvh
 logs/
 data/
 wandb/
