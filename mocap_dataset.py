@@ -6,13 +6,12 @@ import multiprocess
 import torch
 from torch.utils.data import Dataset
 
-# from tools.preprocess import clean_XY_torch as clean_data
 from tools.preprocess import clean_XY_np as clean_data
 from tools.preprocess import get_Z_torch as get_Z
 from tools.preprocess import local_frame_torch as local_frame
 
 class MoCap(Dataset):
-    def __init__(self, csv_file, fnames, num_marker, num_joint, test=False):
+    def __init__(self, csv_file, fnames, lrf_mean_markers_file, num_marker, num_joint, test=False):
         self.is_test = test
         with open(fnames) as f:
             file_stem = f.readlines()
@@ -39,6 +38,7 @@ class MoCap(Dataset):
         self.marker_data = np.concatenate([x[0] for x in data], 0)
         self.motion_data = np.concatenate([x[1] for x in data], 0)
         self.avg_bone = np.concatenate([x[2] for x in data], 0)
+        self.lrf_mean_markers = torch.tensor(np.load(lrf_mean_markers_file))
 
         if test:
             self.marker_data = np.expand_dims(self.marker_data, 0)
@@ -56,14 +56,14 @@ class MoCap(Dataset):
             avg_bone = self.avg_bone[index]
         X = self.marker_data[index]
         Y = self.motion_data[index]
-        X = torch.tensor(X)
-        Y = torch.tensor(Y)
+        X = torch.tensor(X).to(torch.float32)
+        Y = torch.tensor(Y).to(torch.float32)
         if not self.is_test:
             X = X.unsqueeze(0)
             Y = Y.unsqueeze(0)
         avg_bone = torch.tensor(avg_bone)
 
         Z = get_Z(X, Y)
-        F, Y = local_frame(X, Y, "cpu")
+        F, Y = local_frame(X, Y, self.lrf_mean_markers, "cpu")
         Y, Z = Y.squeeze(0), Z.squeeze(0)
         return Y, Z, F, avg_bone

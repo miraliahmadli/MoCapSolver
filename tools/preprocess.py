@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 
-from tools.utils import xform_inv_np, xform_inv_torch, xform_to_mat44_np, xform_to_mat44_torch
+from tools.utils import xform_inv_np, xform_inv_torch, xform_to_mat44_np, xform_to_mat44_torch, svd_rot_np, svd_rot_torch
 
 main_labels =\
         ['C7', 'CLAV', 'LANK', 'LBHD', 'LBWT', 'LELB', 'LFHD', 'LFIN', 
@@ -57,6 +57,11 @@ def get_Z_np(X, Y):
     Z = np.matmul(Y_inv_rot, np.expand_dims(X_expand, 1)) + Y_inv_tr
     Z = Z.transpose((0, 2, 1, 3, 4))
     Z = np.squeeze(Z)
+
+    zeros = (X == 0.0)
+    nans = zeros.any(axis=-1)
+
+    Z[nans] = 0.0
     return Z
 
 
@@ -71,16 +76,24 @@ def get_Z_torch(X, Y):
     Z = torch.matmul(Y_inv_rot, torch.unsqueeze(X_expand, 1)) + Y_inv_tr
     Z = Z.permute((0, 2, 1, 3, 4))
     Z = torch.squeeze(Z, -1)
+
+    zeros = (X == 0.0)
+    nans = zeros.any(axis=-1)
+
+    Z[nans] = 0.0
     return Z
 
 
-def clean_XY_np(X_read, Y_read, avg_bone_read, m_conv= 0.57803):#0.056444):
+def clean_XY_np(X_read, Y_read, avg_bone_read, m_conv=0.56444, del_nans=False):#0.57803):
     '''
     Clean XYZ
 ​
     Parameters:
         X_read: global marker positions read from the npy, dim: (4, m, n)
-        Y: rotation + translation matrices read from the npy, dim: (n, j, 3, 4)
+        Y_read: rotation + translation matrices read from the npy, dim: (n, j, 3, 4)
+        avg_bone_read: avg bone length
+        m_conv: conversion constant
+        del_nans: delete frames with nans
 ​
     Return:
         X: cleaned global marker positions, dim: (n, m, 3)
@@ -93,40 +106,46 @@ def clean_XY_np(X_read, Y_read, avg_bone_read, m_conv= 0.57803):#0.056444):
     
     zeros = (X == 0.0)
     nans = ~(zeros.any(axis=-1).any(axis=-1))
-    avg_bone = avg_bone_read[nans]
 
-    X = X[nans]
+    avg_bone = avg_bone_read
+    if del_nans:
+        X = X[nans]
+        avg_bone = avg_bone_read[nans]
     X *= (0.01 / (avg_bone[..., None] * m_conv))
     X = X[..., [1, 2, 0]]
 
     Y = Y_read.copy()
-    Y = Y[nans]
+    if del_nans:
+        Y = Y[nans]
     Y[..., 3] *= (1.0 / avg_bone[..., None])
 
     return X, Y, avg_bone
 
 
-def clean_XY_torch(X_read, Y_read, avg_bone_read, m_conv= 0.57803):#0.056444):
+def clean_XY_torch(X_read, Y_read, avg_bone_read, m_conv=0.56444, del_nans=False):#0.57803):
     X = torch.nan_to_num(X_read, nan=0.0, posinf=0.0, neginf=0.0)
     X = X.permute(2, 1, 0)
     X = X[..., : 3]
 
     zeros = (X == 0.0)
     nans = ~(zeros.any(dim=-1).any(dim=-1))
-    avg_bone = avg_bone_read[nans]
 
-    X = X[nans]
+    avg_bone = avg_bone_read
+    if del_nans:
+        X = X[nans]
+        avg_bone = avg_bone_read[nans]
     X *= (0.01 / (avg_bone[..., None] * m_conv))
     X = X[..., [1, 2, 0]]
 
     Y = Y_read.clone()
-    Y = Y[nans]
+    if del_nans:
+        Y = Y[nans]
     Y[..., 3] *= (1.0 / avg_bone[..., None])
 
     return X, Y, avg_bone
 
 
-def local_frame_np(X, Y):
+def local_frame_np(X, Y, X_mean):
     '''
     Local frame F calculation function
     rot: Rotation of local_frame_joint
@@ -134,31 +153,29 @@ def local_frame_np(X, Y):
 
     Parameters:
         X: global marker positions, dim: (n, m, 3)
-        Y: rotation + translation matrices, dim: (n, j, 3, 4)
+        X_mean: mean marker positions wrt reference joint, dim: (6, 1, 3)
 
     Return:
         F: Computed local frame, dim: (n, 3, 4)
         Y_local: Y fitted into local frame, dim: (n, j, 3, 4)
     '''
-    X_tr = np.mean(X[:, local_frame_markers, :], axis = 1)
-    X_rot = Y[:, local_frame_joint, :, :3]
+    X_picked = X[:, local_frame_markers, :]
+    R, t = svd_rot_np(X_mean.transpose(1, 2, 0), X_picked.transpose(0, 2, 1))
 
-    F = np.concatenate([X_rot, np.expand_dims(X_tr, 2)], axis = 2)
-
+    F = np.concatenate([R, t], axis=-1)
     F_inv = xform_inv_np(F)
     F_inv_expand = np.expand_dims(F_inv, 1)
 
     Y_44 = xform_to_mat44_np(Y)
     Y_local = np.matmul(F_inv_expand, Y_44)
-
     return F, Y_local
 
 
-def local_frame_torch(X, Y, device="cuda"):
-    X_tr = torch.mean(X[:, local_frame_markers, :], axis = 1)
-    X_rot = Y[:, local_frame_joint, :, :3]
+def local_frame_torch(X, Y, X_mean, device="cuda"):
+    X_picked = X[:, local_frame_markers, :]
+    R, t = svd_rot_torch(X_mean.permute(1, 2, 0), X_picked.permute(0, 2, 1))
 
-    F = torch.cat((X_rot, torch.unsqueeze(X_tr, 2)), axis = 2)
+    F = torch.cat([R, t], axis=-1)
 
     F_inv = xform_inv_torch(F)
     F_inv_expand = torch.unsqueeze(F_inv, 1)

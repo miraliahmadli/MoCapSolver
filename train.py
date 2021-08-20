@@ -27,7 +27,7 @@ class Agent:
         self.checkpoint_dir = cfg.model_dir
         self.is_test = test
         self.is_sweep = sweep
-        self.conv_to_m = 0.57803
+        self.conv_to_m = 0.56444#0.57803
 
         self.num_markers = cfg.num_markers
         self.num_joints = cfg.num_joints
@@ -67,8 +67,7 @@ class Agent:
             
             self.model = Baseline(self.num_markers, self.num_joints, hidden_size, num_layers, use_svd)
         elif used == "least_square":
-            # w = weight_assign('dataset/joint_to_marker_three2one.txt').to(self.device)
-            w = torch.ones((31, 41)).to(self.device)
+            w = weight_assign('dataset/joint_to_marker_three2one.txt').to(self.device)
             self.model = LS_solver(self.num_joints, w, self.device)
         else:
             raise NotImplementedError
@@ -77,9 +76,9 @@ class Agent:
         self.model.to(self.device)
 
     def load_data(self):
-        self.train_dataset = MoCap(csv_file=self.cfg.csv_file , fnames=self.cfg.train_filenames,\
+        self.train_dataset = MoCap(csv_file=self.cfg.csv_file , fnames=self.cfg.train_filenames, lrf_mean_markers_file=self.cfg.lrf_mean_markers,\
                                 num_marker=self.num_markers, num_joint=self.num_joints)
-        self.val_dataset = MoCap(csv_file=self.cfg.csv_file , fnames=self.cfg.val_filenames,\
+        self.val_dataset = MoCap(csv_file=self.cfg.csv_file , fnames=self.cfg.val_filenames, lrf_mean_markers_file=self.cfg.lrf_mean_markers,\
                                 num_marker=self.num_markers, num_joint=self.num_joints)
 
         self.train_steps = len(self.train_dataset) // self.cfg.batch_size
@@ -98,7 +97,7 @@ class Agent:
     def train(self):
         self.best_loss = float("inf")
         val_loss_f = []
-        train_loss_f =[]
+        train_loss_f = []
 
         wandb.init(config=self.default_cfg(), project='denoising', entity='mocap')
         if self.is_sweep:
@@ -113,7 +112,6 @@ class Agent:
             if scheduler_used == "ExponentialLR":
                 self.cfg.lr_scheduler.ExponentialLR.decay = sweep_config.decay
 
-
         self.build_model()
         self.criterion = self.build_loss_function()
         self.optimizer = self.build_optimizer()
@@ -121,8 +119,8 @@ class Agent:
         self.load_data()
 
         last_epoch = 0
-        # if os.path.exists(self.checkpoint_dir):
-        #     last_epoch = self.load_model()
+        if os.path.exists(self.checkpoint_dir):
+            last_epoch = self.load_model()
 
         self.scheduler = self.lr_scheduler(last_epoch)
 
@@ -167,7 +165,9 @@ class Agent:
             Y, Z, avg_bone = Y.to(torch.float32), Z.to(torch.float32), avg_bone.to(torch.float32)
             Y, Z, avg_bone = Y.to(self.device), Z.to(self.device), avg_bone.to(self.device).squeeze(-1)
 
-            Y_hat = self.run_batch(Y, Z, avg_bone, bs)
+            Y_hat = self.run_batch(Y, Z, avg_bone, bs,\
+                                    sample_markers=self.cfg.training_settings.train_set.sample,\
+                                    corrupt_markers=self.cfg.training_settings.train_set.corrupt)
 
             loss_rot, loss_tr = self.criterion(Y_hat, Y)
             loss = loss_tr + loss_rot
@@ -205,8 +205,7 @@ class Agent:
         total_angle_diff *= 180 / (n * np.pi)
         losses = (total_loss, total_loss_rot, total_loss_tr)
         self.write_summary(self.train_writer, losses, total_angle_diff, total_translation_diff, epoch)
-        self.wandb_summary(True, losses, total_angle_diff, total_translation_diff)
-
+        self.wandb_summary(True, losses, total_angle_diff, total_translation_diff, epoch)
 
         tqdm_update = "Train: Epoch={0:04d},loss={1:.4f}, rot_loss={2:.4f}, t_loss={3:.4f}".format(epoch, total_loss, total_loss_rot, total_loss_tr)
         tqdm_batch.set_postfix_str(tqdm_update)
@@ -232,7 +231,9 @@ class Agent:
                 n += bs
                 Y, Z, avg_bone = Y.to(torch.float32).to(self.device), Z.to(torch.float32).to(self.device), avg_bone.to(torch.float32).to(self.device).squeeze(-1)
 
-                Y_hat = self.run_batch(Y, Z, avg_bone, bs)
+                Y_hat = self.run_batch(Y, Z, avg_bone, bs,\
+                                    sample_markers=self.cfg.training_settings.val_set.sample,\
+                                    corrupt_markers=self.cfg.training_settings.val_set.corrupt)
 
                 loss_rot, loss_tr = self.criterion(Y_hat, Y)
                 loss = loss_tr + loss_rot
@@ -266,7 +267,7 @@ class Agent:
         total_angle_diff *= 180 / (n * np.pi)
         losses = (total_loss, total_loss_rot, total_loss_tr)
         self.write_summary(self.val_writer, losses, total_angle_diff, total_translation_diff, epoch)
-        self.wandb_summary(False, losses, total_angle_diff, total_translation_diff)
+        self.wandb_summary(False, losses, total_angle_diff, total_translation_diff, epoch)
 
         tqdm_update = "Val  : Epoch={0:04d},loss={1:.4f}, rot_loss={2:.4f}, t_loss={3:.4f}".format(epoch, total_loss, total_loss_rot, total_loss_tr)
         tqdm_batch.set_postfix_str(tqdm_update)
@@ -302,8 +303,10 @@ class Agent:
                 Y, Z, F, avg_bone = Y.to(torch.float32).to(self.device).squeeze(0), Z.to(torch.float32).to(self.device).squeeze(0),\
                                     F.to(torch.float32).to(self.device).squeeze(0).unsqueeze(1), avg_bone.to(torch.float32).to(self.device).squeeze(-1)
                 bs = Y.shape[0]
-
-                Y_hat = self.run_batch(Y, Z, avg_bone, bs)
+                
+                Y_hat = self.run_batch(Y, Z, avg_bone, bs,
+                                    sample_markers=self.cfg.training_settings.val_set.sample,
+                                    corrupt_markers=self.cfg.training_settings.val_set.corrupt)
 
                 loss_rot, loss_tr = self.criterion(Y_hat, Y)
                 loss_rot /= bs
@@ -316,19 +319,22 @@ class Agent:
                 np.save(f"asd.npy", Y_)
                 print("loss={0:.4f}".format(loss.item()))
 
-    def run_batch(self, Y, Z, avg_bone, bs):
-        Z_sample = self.sampler.sample((bs, )).view(-1, self.num_markers, self.num_joints, 3)
+    def run_batch(self, Y, Z, avg_bone, bs, sample_markers, corrupt_markers):
+        if sample_markers:
+            Z = self.sampler.sample((bs, )).view(-1, self.num_markers, self.num_joints, 3)
 
         X = LBS(self.w, Y, Z, device=self.device)
-        beta = 0.05 / (self.conv_to_m * avg_bone)
-        X_hat = corrupt(X, beta=beta.view(-1), device=self.device)
+        if corrupt_markers:
+            beta = 0.05 / (self.conv_to_m * avg_bone)
+            X_hat = corrupt(X, beta=beta.view(-1), device=self.device)
+        else:
+            X_hat = X
 
         if self.cfg.model.used.lower() == "least_square":
-            Z = Z_sample
             X = X_hat
         else:
             X = normalize_X(X_hat, X)
-            Z_pw = preweighted_Z(self.w, Z_sample)        
+            Z_pw = preweighted_Z(self.w, Z)
             Z = normalize_Z_pw(Z_pw)
 
         Y_hat = self.model(X, Z).view(bs, self.num_joints, 3, 4)
@@ -339,7 +345,7 @@ class Agent:
     def custom_l1_loss(self, Y_hat, Y):
         R_hat, t_hat = Y_hat[..., :3], Y_hat[..., 3:]
         R, t = Y[..., :3], Y[..., 3:]
-        loss_rot = torch.sum(self.user_weights_rot * torch.abs(R_hat - R)) / 3
+        loss_rot = torch.sum(self.user_weights_rot * torch.abs(R_hat - R))
         loss_tr = torch.sum(self.user_weights_t * torch.abs(t_hat - t))
         return loss_rot, loss_tr
 
@@ -399,26 +405,23 @@ class Agent:
         summary_writer.add_scalar('Rotational Error (deg)', torch.mean(ang_diff), epoch)
         summary_writer.add_scalar('Translation Error (mm)', torch.mean(tr_diff), epoch)
 
-    
-    def wandb_summary(self, training, losses, ang_diff, tr_diff):
+    def wandb_summary(self, training, losses, ang_diff, tr_diff, epoch):
         total_loss, total_loss_rot, total_loss_tr = losses
         if not training:
-            wandb.log({'Validation Loss': total_loss})
-            wandb.log({'Validation Rotation Loss': total_loss_rot})
-            wandb.log({'Validation Translation Loss': total_loss_tr})
+            wandb.log({'Validation Loss': total_loss, 'Epoch': epoch})
+            wandb.log({'Validation Rotation Loss': total_loss_rot, 'Epoch': epoch})
+            wandb.log({'Validation Translation Loss': total_loss_tr, 'Epoch': epoch})
             for i in range(self.num_joints):
-                wandb.log({f'Validation joint_{i+1}: Avg rotation error': ang_diff[i]})
-                wandb.log({f'Validation joint_{i+1}: Avg translation error': tr_diff[i]})
-            wandb.log({'Validation Rotation Error (deg)': torch.mean(ang_diff)})
-            wandb.log({'Validation Translation Error (mm)': torch.mean(tr_diff)})
+                wandb.log({f'Validation joint_{i+1}: Avg rotation error': ang_diff[i], 'Epoch': epoch})
+                wandb.log({f'Validation joint_{i+1}: Avg translation error': tr_diff[i], 'Epoch': epoch})
+            wandb.log({'Validation Rotation Error (deg)': torch.mean(ang_diff), 'Epoch': epoch})
+            wandb.log({'Validation Translation Error (mm)': torch.mean(tr_diff), 'Epoch': epoch})
         else:
-            wandb.log({'Training Loss': total_loss})
-            wandb.log({'Training Rotation Loss': total_loss_rot})
-            wandb.log({'Training Translation Loss': total_loss_tr})
+            wandb.log({'Training Loss': total_loss, 'Epoch': epoch})
+            wandb.log({'Training Rotation Loss': total_loss_rot, 'Epoch': epoch})
+            wandb.log({'Training Translation Loss': total_loss_tr, 'Epoch': epoch})
             for i in range(self.num_joints):
-                wandb.log({f'Training joint_{i+1}: Avg rotation error': ang_diff[i]})
-                wandb.log({f'Training joint_{i+1}: Avg translation error': tr_diff[i]})
-            wandb.log({'Training Rotation Error (deg)': torch.mean(ang_diff)})
-            wandb.log({'Training Translation Error (mm)': torch.mean(tr_diff)})
-
-
+                wandb.log({f'Training joint_{i+1}: Avg rotation error': ang_diff[i], 'Epoch': epoch})
+                wandb.log({f'Training joint_{i+1}: Avg translation error': tr_diff[i], 'Epoch': epoch})
+            wandb.log({'Training Rotation Error (deg)': torch.mean(ang_diff), 'Epoch': epoch})
+            wandb.log({'Training Translation Error (mm)': torch.mean(tr_diff), 'Epoch': epoch})
