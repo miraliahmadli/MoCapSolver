@@ -20,12 +20,13 @@ class ResidualBlock(nn.Module):
 
 
 class DenseBlock(nn.Module):
-    def __init__(self, input_size: int, hidden_size: int, add_offset=False):
+    def __init__(self, input_size: int, hidden_size: int,
+                add_offset=False, offset_dim=None):
         super(DenseBlock, self).__init__()
         self.dense = nn.Linear(input_size, hidden_size)
-        self.add_offset = add_offset
+        self.add_offset = add_offset and (offset_dim is not None)
         if self.add_offset:
-            self.offset_enc = nn.Linear(input_size, hidden_size)
+            self.offset_enc = nn.Linear(offset_dim, hidden_size)
 
     def set_offset(self, offset):
         if not self.add_offset: raise Exception('Wrong Combination of Parameters')
@@ -60,7 +61,9 @@ class StaticEncoder(nn.Module):
         super(StaticEncoder, self).__init__()
         self.layers = nn.ModuleList()
         self.pooling_list = []
-        self.topologies = edges
+        self.topologies = [edges]
+
+        neighbor_list = find_neighbor(self.topologies[-1], skeleton_dist)
 
         channels = 3
         in_channels = channels * len(neighbor_list)
@@ -68,11 +71,12 @@ class StaticEncoder(nn.Module):
         self.channel_list = [in_channels, out_channels]
 
         seq = []
-        neighbor_list = find_neighbor(self.topologies[-1], skeleton_dist)
-        seq.append(SkeletonLinear(neighbor_list, in_channels=in_channels,
-                                    out_channels=out_channels, extra_dim1=True))
+        linear = SkeletonLinear(neighbor_list, in_channels=in_channels,
+                                out_channels=out_channels, extra_dim1=False)
+        seq.append(linear)
 
-        pool = SkeletonPool(self.topologies[-1], channels_per_edge=channels*2, pooling_mode='mean')
+        pool = SkeletonPool(self.topologies[-1], channels_per_edge=channels*8, 
+                            pooling_mode='mean', last_pool=True)
         seq.append(pool)
         self.pooling_list.append(pool.pooling_list)
         self.topologies.append(pool.new_edges)
@@ -82,7 +86,7 @@ class StaticEncoder(nn.Module):
 
         self.encoder = nn.Sequential(*seq)
 
-    # input should have shape batch * num_joints * 3
+    # input should have shape batch * (num_joints * 3)
     def forward(self, input: torch.Tensor):
         out = self.encoder(input)
         return out
@@ -96,6 +100,7 @@ class StaticDecoder(nn.Module):
 
         in_channels = enc.channel_list[1]
         out_channels = enc.channel_list[0]
+        neighbor_list = find_neighbor(enc.topologies[-2], skeleton_dist)
 
         seq = []
         unpool = SkeletonUnpool(enc.pooling_list[-1], in_channels // len(neighbor_list))
@@ -104,9 +109,8 @@ class StaticDecoder(nn.Module):
         activation = nn.LeakyReLU(negative_slope=0.2)
         seq.append(activation)
 
-        neighbor_list = find_neighbor(enc.topologies[-1], skeleton_dist)
         seq.append(SkeletonLinear(neighbor_list, in_channels=in_channels,
-                                    out_channels=out_channels, extra_dim1=True))
+                                out_channels=out_channels, extra_dim1=False))
 
         self.decoder = nn.Sequential(*seq)
 
@@ -145,10 +149,11 @@ class DynamicEncoder(nn.Module):
             if i == 0: self.channel_list.append(in_channels)
             self.channel_list.append(out_channels)
 
-            seq.append(SkeletonConv(neighbor_list, in_channels=in_channels, out_channels=out_channels,
-                                    joint_num=self.edge_num[i], kernel_size=kernel_size, stride=2,
-                                    padding=padding, padding_mode=padding_mode, bias=bias, add_offset=add_offset,
-                                    in_offset_channel=3 * self.channel_base[i] // self.channel_base[0]))
+            conv = SkeletonConv(neighbor_list, in_channels=in_channels, out_channels=out_channels,
+                                joint_num=self.edge_num[i], kernel_size=kernel_size, stride=2,
+                                padding=padding, padding_mode=padding_mode, bias=bias, add_offset=add_offset,
+                                in_offset_channel=3 * self.channel_base[i] // self.channel_base[0])
+            seq.append(conv)
             self.convs.append(seq[-1])
 
             last_pool = True if i == num_layers - 1 else False
@@ -202,15 +207,18 @@ class DynamicDecoder(nn.Module):
             else:
                 bias = True
 
-            self.unpools.append(SkeletonUnpool(enc.pooling_list[num_layers - i - 1], in_channels // len(neighbor_list)))
+            unpool = SkeletonUnpool(enc.pooling_list[num_layers - i - 1], 
+                                    in_channels // len(neighbor_list))
+            self.unpools.append(unpool)
 
             seq.append(nn.Upsample(scale_factor=2, mode=upsampling, align_corners=False))
-            seq.append(self.unpools[-1])
-            seq.append(SkeletonConv(neighbor_list, in_channels=in_channels, out_channels=out_channels,
-                                    joint_num=enc.edge_num[num_layers - i - 1], kernel_size=kernel_size, stride=1,
-                                    padding=padding, padding_mode=padding_mode, bias=bias, add_offset=add_offset,
-                                    in_offset_channel=3 * enc.channel_base[num_layers - i - 1] // enc.channel_base[0]))
-            self.convs.append(seq[-1])
+            seq.append(unpool)
+            conv = SkeletonConv(neighbor_list, in_channels=in_channels, out_channels=out_channels,
+                                joint_num=enc.edge_num[num_layers - i - 1], kernel_size=kernel_size, stride=1,
+                                padding=padding, padding_mode=padding_mode, bias=bias, add_offset=add_offset,
+                                in_offset_channel=3 * enc.channel_base[num_layers - i - 1] // enc.channel_base[0])
+            seq.append(conv)
+            self.convs.append(conv)
             if i != num_layers - 1: seq.append(nn.LeakyReLU(negative_slope=0.2))
 
             self.layers.append(nn.Sequential(*seq))
@@ -300,3 +308,41 @@ class MarkerDecoder(nn.Module):
                 self.dense_blocks[i].set_offset(offset[i])
             x = layer(x)
         return x
+
+
+def test_models():
+    def get_topology():
+        joint_topology = [-1] * 31
+        with open("../../dataset/hierarchy.txt") as f:
+            lines = f.readlines()
+            for l in lines:
+                lst = list(map(int, l.strip().split()))
+                parent = lst[0]
+                for j in lst[1:]:
+                    joint_topology[j] = parent
+        return joint_topology
+
+    joint_topology = get_topology()
+    # print(joint_topology)
+    # print("-------------")
+    edges = build_edge_topology(joint_topology, torch.zeros((len(joint_topology), 3)))
+    # for row in edges:
+    #     print(row)
+    # print("-------------")
+    x = torch.rand(32, len(joint_topology) * 3)
+    print(x.shape)
+
+    stat_enc = StaticEncoder(edges)
+    lat_t = stat_enc(x)
+    print(lat_t.shape)
+
+    stat_dec = StaticDecoder(stat_enc)
+    res_t = stat_dec(lat_t)
+    print(res_t.shape)
+
+    # dynamic_enc = DynamicEncoder()
+    # dynamic_dec = DynamicDecoder()
+
+
+if __name__ == "__main__":
+    test_models()

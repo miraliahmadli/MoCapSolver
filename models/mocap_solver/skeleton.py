@@ -158,7 +158,7 @@ class SkeletonPool(nn.Module):
     Pooling is applied to skeletal branches with a consecutive 
     sequence of edges that connect nodes of degree 2
     '''
-    def __init__(self, edges, pooling_mode, channels_per_edge, last_pool=False):
+    def __init__(self, edges, pooling_mode, channels_per_edge, num_joints=31, last_pool=False):
         super(SkeletonPool, self).__init__()
 
         if pooling_mode != 'mean':
@@ -170,20 +170,20 @@ class SkeletonPool(nn.Module):
         self.seq_list = []
         self.pooling_list = []
         self.new_edges = []
-        degree = [0] * 100
+        self.degree = [0] * num_joints
 
         for edge in edges:
-            degree[edge[0]] += 1
-            degree[edge[1]] += 1
+            self.degree[edge[0]] += 1
+            self.degree[edge[1]] += 1
 
         def find_seq(j, seq):
-            nonlocal self, degree, edges
+            nonlocal self, edges
 
-            if degree[j] > 2 and j != 0:
+            if self.degree[j] > 2 and j != 0:
                 self.seq_list.append(seq)
                 seq = []
 
-            if degree[j] == 1:
+            if self.degree[j] == 1:
                 self.seq_list.append(seq)
                 return
 
@@ -210,7 +210,6 @@ class SkeletonPool(nn.Module):
         self.description = 'SkeletonPool(in_edge_num={}, out_edge_num={})'.format(
             len(edges), len(self.pooling_list)
         )
-
         self.weight = torch.zeros(len(self.pooling_list) * channels_per_edge, self.edge_num * channels_per_edge)
 
         for i, pair in enumerate(self.pooling_list):
@@ -221,7 +220,8 @@ class SkeletonPool(nn.Module):
         self.weight = nn.Parameter(self.weight, requires_grad=False)
 
     def forward(self, input: torch.Tensor):
-        return torch.matmul(input, self.weight.T)
+        res = torch.matmul(input, self.weight.T)
+        return res
 
 
 class SkeletonUnpool(nn.Module):
@@ -256,7 +256,8 @@ class SkeletonUnpool(nn.Module):
         self.weight.requires_grad_(False)
 
     def forward(self, input: torch.Tensor):
-        return torch.matmul(input, self.weight.T)
+        res = torch.matmul(input, self.weight.T)
+        return res
 
 
 """
