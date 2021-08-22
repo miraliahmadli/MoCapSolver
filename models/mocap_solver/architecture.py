@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 
+import sys
+sys.path.append("../../")
 from models.mocap_solver.skeleton import *
 
 
@@ -131,6 +133,7 @@ class DynamicEncoder(nn.Module):
         self.pooling_list = []
         self.layers = nn.ModuleList()
         self.convs = []
+        self.channel_base = [4]
 
         padding = (kernel_size - 1) // 2
         bias = True
@@ -171,7 +174,7 @@ class DynamicEncoder(nn.Module):
 
     def forward(self, input, offset=None):
         # padding the one zero row to global position, so each joint including global position has 4 channels as input
-        out = torch.cat((input, torch.zeros_like(input[:, [0], :])), dim=1)
+        out = torch.cat((input, torch.zeros_like(input[:, [0], :])), dim=1).permute(0, 2, 1)
 
         for i, layer in enumerate(self.layers):
             if self.skeleton_info == 'concat' and offset is not None:
@@ -184,7 +187,7 @@ class DynamicEncoder(nn.Module):
 class DynamicDecoder(nn.Module):
     def __init__(self, enc, num_layers=2, skeleton_dist=1,
                 kernel_size=15, skeleton_info='concat', 
-                upsamplin="linear", padding_mode="zeros"):
+                upsampling="linear", padding_mode="zeros"):
         super(DynamicDecoder, self).__init__()
         self.layers = nn.ModuleList()
         self.unpools = nn.ModuleList()
@@ -211,7 +214,7 @@ class DynamicDecoder(nn.Module):
                                     in_channels // len(neighbor_list))
             self.unpools.append(unpool)
 
-            seq.append(nn.Upsample(scale_factor=2, mode=upsampling, align_corners=False))
+            self.layers.append(nn.Upsample(scale_factor=2, mode=upsampling, align_corners=False))
             seq.append(unpool)
             conv = SkeletonConv(neighbor_list, in_channels=in_channels, out_channels=out_channels,
                                 joint_num=enc.edge_num[num_layers - i - 1], kernel_size=kernel_size, stride=1,
@@ -225,12 +228,15 @@ class DynamicDecoder(nn.Module):
 
     def forward(self, input, offset=None):
         for i, layer in enumerate(self.layers):
-            if self.skeleton_info == 'concat' and offset is not None:
-                self.convs[i].set_offset(offset[len(self.layers) - i - 1])
-            input = layer(input)
+            if isinstance(layer, nn.Upsample):
+                input = layer(input.transpose(-2, -1))
+            else:
+                if self.skeleton_info == 'concat' and offset is not None:
+                    self.convs[i].set_offset(offset[len(self.layers) - i - 1])
+                input = layer(input)
 
         # throw the padded rwo for global position
-        input = input[:, :-1, :]
+        input = input[:, :, :-1]
 
         return input
 
@@ -329,19 +335,28 @@ def test_models():
     # for row in edges:
     #     print(row)
     # print("-------------")
-    x = torch.rand(32, len(joint_topology) * 3)
+    print("Static encoder")
+    x = torch.rand(1, len(joint_topology) * 3)
     print(x.shape)
 
     stat_enc = StaticEncoder(edges)
-    lat_t = stat_enc(x)
+    lat_t = stat_enc(x).T
     print(lat_t.shape)
 
     stat_dec = StaticDecoder(stat_enc)
     res_t = stat_dec(lat_t)
     print(res_t.shape)
+    print("\n----------------------------\n")
 
-    # dynamic_enc = DynamicEncoder()
-    # dynamic_dec = DynamicDecoder()
+    print("Dynamic encodder")
+    x = torch.rand(1, len(edges)*4 + 3, 64)
+    print(x.shape)
+    dynamic_enc = DynamicEncoder(edges, skeleton_info='')
+    lat_m = dynamic_enc(x)
+    print(lat_m.shape)
+    dynamic_dec = DynamicDecoder(dynamic_enc, skeleton_info='')
+    res_m = dynamic_dec(lat_m).transpose(-2, -1)
+    print(res_m.shape)
 
 
 if __name__ == "__main__":

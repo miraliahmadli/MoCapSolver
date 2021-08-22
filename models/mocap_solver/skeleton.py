@@ -92,10 +92,10 @@ class SkeletonConv(nn.Module):
 
     def forward(self, input):
         weight_masked = self.weight * self.mask
-        res = F.conv1d(F.pad(input, self._padding_repeated_twice, mode=self.padding_mode),
+        padded_input = F.pad(input.transpose(-2, -1), self._padding_repeated_twice, mode=self.padding_mode)
+        res = F.conv1d(padded_input,
                        weight_masked, self.bias, self.stride,
-                       0, self.dilation, self.groups)
-
+                       0, self.dilation, self.groups).transpose(-2, -1)
         if self.add_offset:
             offset_res = self.offset_enc(self.offset)
             offset_res = offset_res.reshape(offset_res.shape + (1, ))
@@ -256,7 +256,7 @@ class SkeletonUnpool(nn.Module):
         self.weight.requires_grad_(False)
 
     def forward(self, input: torch.Tensor):
-        res = torch.matmul(input, self.weight.T)
+        res = torch.matmul(self.weight, input).transpose(-2, -1)
         return res
 
 
