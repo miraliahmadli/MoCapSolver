@@ -7,7 +7,7 @@ import numpy as np
 
 class SkeletonConv(nn.Module):
     def __init__(self, neighbour_list, in_channels, out_channels, kernel_size, joint_num, stride=1, padding=0,
-                 bias=True, padding_mode='zeros', add_offset=False, in_offset_channel=0):
+                 bias=True, padding_mode='zeros', add_offset=False, in_offset_channel=0):#, last_conv=False):
         self.in_channels_per_joint = in_channels // joint_num
         self.out_channels_per_joint = out_channels // joint_num
         if in_channels % joint_num != 0 or out_channels % joint_num != 0:
@@ -38,6 +38,8 @@ class SkeletonConv(nn.Module):
             self.expanded_neighbour_list.append(expanded)
 
         if self.add_offset:
+            # if last_conv:
+            #     offset_in_ch = len(neighbour_list) // 2 * in_offset_channel * 4
             self.offset_enc = SkeletonLinear(neighbour_list, in_offset_channel * len(neighbour_list), out_channels)
 
             for neighbour in neighbour_list:
@@ -98,7 +100,7 @@ class SkeletonConv(nn.Module):
                        0, self.dilation, self.groups).transpose(-2, -1)
         if self.add_offset:
             offset_res = self.offset_enc(self.offset)
-            offset_res = offset_res.reshape(offset_res.shape + (1, ))
+            offset_res = offset_res.unsqueeze(1)
             res += offset_res / 100
         return res
 
@@ -195,6 +197,8 @@ class SkeletonPool(nn.Module):
         for seq in self.seq_list:
             if last_pool:
                 self.pooling_list.append(seq)
+                if len(seq) > 1:
+                    self.new_edges.append([edges[seq[0]][0], edges[seq[-1]][1]])
                 continue
             if len(seq) % 2 == 1:
                 self.pooling_list.append([seq[0]])
