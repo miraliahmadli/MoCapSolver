@@ -32,7 +32,7 @@ class DenseBlock(nn.Module):
 
     def set_offset(self, offset):
         if not self.add_offset: raise Exception('Wrong Combination of Parameters')
-        self.offset = offset.reshape(offset.shape[-2], -1)
+        self.offset = offset.view(offset.shape[0], -1)
 
     def forward(self, x):
         out = self.dense(x)
@@ -134,6 +134,8 @@ class DynamicEncoder(nn.Module):
         self.layers = nn.ModuleList()
         self.convs = []
         self.channel_base = [4]
+        self.off_channels = [1, 8]
+        self.num_joints = [len(edges) + 1, 7]
 
         padding = (kernel_size - 1) // 2
         bias = True
@@ -155,7 +157,7 @@ class DynamicEncoder(nn.Module):
             conv = SkeletonConv(neighbor_list, in_channels=in_channels, out_channels=out_channels,
                                 joint_num=self.edge_num[i], kernel_size=kernel_size, stride=2,
                                 padding=padding, padding_mode=padding_mode, bias=bias, add_offset=add_offset,
-                                in_offset_channel=3 * self.channel_base[i] // self.channel_base[0])#, last_conv=(i == num_layers - 1))
+                                in_offset_channel=3 * self.off_channels[i], num_joints=self.num_joints[i])#, last_conv=(i == num_layers - 1))
             seq.append(conv)
             self.convs.append(seq[-1])
 
@@ -219,7 +221,7 @@ class DynamicDecoder(nn.Module):
             conv = SkeletonConv(neighbor_list, in_channels=in_channels, out_channels=out_channels,
                                 joint_num=enc.edge_num[num_layers - i - 1], kernel_size=kernel_size, stride=1,
                                 padding=padding, padding_mode=padding_mode, bias=bias, add_offset=add_offset,
-                                in_offset_channel=3 * enc.channel_base[num_layers - i - 1] // enc.channel_base[0])
+                                in_offset_channel=3 * enc.off_channels[-i - 1], num_joints=enc.num_joints[-i-1])
             seq.append(conv)
             self.convs.append(conv)
             if i != num_layers - 1: seq.append(nn.LeakyReLU(negative_slope=0.2))
@@ -243,7 +245,7 @@ class DynamicDecoder(nn.Module):
 
 # eoncoder for dynamic part, i.e. motion + offset part
 class MarkerEncoder(nn.Module):
-    def __init__(self, input_size, hidden_size, num_layers=2, template_skeleton="add"):
+    def __init__(self, input_size, hidden_size, num_layers=2, template_skeleton="add", offset_dims=None):
         super(MarkerEncoder, self).__init__()
         self.input_size = input_size
         self.hidden_size = hidden_size
@@ -251,15 +253,19 @@ class MarkerEncoder(nn.Module):
         self.dense_blocks = []
 
         self.template_skeleton = template_skeleton
-        if template_skeleton == 'add': add_offset = True
-        else: add_offset = False
+        if template_skeleton == 'add':
+            add_offset = True
+            self.offset_dims = offset_dims
+        else:
+            add_offset = False
+            self.offset_dims = [None]*num_layers
 
         for i in range(num_layers):
             seq = []
             if i == 0: 
-                dense = DenseBlock(input_size, hidden_size, add_offset)
+                dense = DenseBlock(self.input_size, self.hidden_size, add_offset, self.offset_dims[i])
             else:
-                dense = DenseBlock(hidden_size, hidden_size, add_offset)
+                dense = DenseBlock(self.hidden_size, self.hidden_size, add_offset, self.offset_dims[i])
             seq.append(dense)
             self.dense_blocks.append(dense)
             seq.append(nn.ReLU())
@@ -278,32 +284,32 @@ class MarkerEncoder(nn.Module):
 
 # decoder for dynamic part, i.e. motion + offset part
 class MarkerDecoder(nn.Module):
-    def __init__(self, enc, num_layers=2, template_skeleton="add"):
+    def __init__(self, enc, num_layers=2):
         super(MarkerDecoder, self).__init__()
         self.layers = nn.ModuleList()
         self.enc = enc
         self.hidden_size = enc.hidden_size
-        self.output_size = enc.inp_size
+        self.output_size = enc.input_size
         self.dense_blocks = []
 
-        self.template_skeleton = template_skeleton
-        if template_skeleton == 'add': add_offset = True
+        self.template_skeleton = enc.template_skeleton
+        if self.template_skeleton == 'add': add_offset = True
         else: add_offset = False
 
         for i in range(num_layers):
             seq = []
             if i == num_layers - 1:
                 seq.append(nn.ReLU())
-                dense = DenseBlock(hidden_size, self.output_size, False)
+                dense = DenseBlock(self.hidden_size, self.output_size, False, enc.offset_dims[-i-1])
                 seq.append(dense)
                 self.layers.append(nn.Sequential(*seq))
                 break
 
-            dense = DenseBlock(hidden_size, hidden_size, add_offset)
+            dense = DenseBlock(self.hidden_size, self.hidden_size, add_offset, enc.offset_dims[-i-1])
             seq.append(dense)
             self.dense_blocks.append(dense)
             seq.append(nn.ReLU())
-            res_block = ResidualBlock(hidden_size, hidden_size)
+            res_block = ResidualBlock(self.hidden_size, self.hidden_size)
             seq.append(res_block)
 
             self.layers.append(nn.Sequential(*seq))
@@ -314,6 +320,67 @@ class MarkerDecoder(nn.Module):
                 self.dense_blocks[i].set_offset(offset[i])
             x = layer(x)
         return x
+
+
+class Encoder(nn.Module):
+    def __init__(self, edges, input_size, hidden_size, template_skeleton="add", offset_dims=None):
+        super(Encoder, self).__init__()
+        self.static_enc = StaticEncoder(edges)
+        self.dynamic_enc = DynamicEncoder(edges)
+        self.marker_enc = MarkerEncoder(input_size, hidden_size, template_skeleton=template_skeleton, offset_dims=offset_dims)
+
+    def forward(self, x_c, x_t, x_m):
+        # static encoder
+        l_t = self.static_enc(x_t)
+
+        # offsets
+        offset_enc = [x_t, l_t]
+
+        # dynamic encoder
+        l_m = self.dynamic_enc(x_m, offset_enc)
+
+        # marker encoder
+        l_c = self.marker_enc(x_c, offset_enc)
+
+        return l_c, l_t, l_m
+
+
+class Decoder(nn.Module):
+    def __init__(self, enc, template_skeleton="add", offset_dims=None):
+        super(Decoder, self).__init__()
+        self.static_dec = StaticDecoder(enc.static_enc)
+        self.dynamic_dec = DynamicDecoder(enc.dynamic_enc)
+        self.marker_dec = MarkerDecoder(enc.marker_enc)
+
+    def forward(self, l_c, l_t, l_m):
+        # static decoder
+        Y_t = self.static_dec(l_t.T)
+        
+        # offsets
+        offset_dec = [l_t, Y_t]
+
+        # dynamic decoder
+        Y_m = self.dynamic_dec(l_m, offset_dec)
+
+        # marker decoder
+        Y_c = self.marker_dec(l_c, offset_dec)
+
+        return Y_c, Y_t, Y_m
+
+
+class AE(nn.Module):
+    def __init__(self, edges, num_markers, num_joints, 
+                hidden_size, num_res_layers=3,
+                template_skeleton="add", offset_dims=None):
+        super(AE, self).__init__()
+        self.marker_config_size = 3 * num_markers * num_joints
+        self.encoder = Encoder(edges, self.marker_config_size, hidden_size, template_skeleton=template_skeleton, offset_dims=offset_dims)
+        self.decoder = Decoder(self.encoder)
+
+    def forward(self, x_c, x_t, x_m):
+        lat_c, lat_t, lat_m = self.encoder(x_c, x_t, x_m)
+        Y_c, Y_t, Y_m = self.decoder(lat_c, lat_t, lat_m)
+        return lat_c, lat_t, lat_m, Y_c, Y_t, Y_m
 
 
 class MocapSolver(nn.Module):
@@ -373,13 +440,13 @@ def test_models():
 
     joint_topology = get_topology()
     print(joint_topology)
-    print("-------------")
+    # print("-------------")
     edges = build_edge_topology(joint_topology, torch.zeros((len(joint_topology), 3)))
-    for row in edges:
-        print(row)
+    # for row in edges:
+    #     print(row)
     print("-------------")
     print("Static encoder")
-    x_t = torch.rand(1, len(joint_topology) * 3)
+    x_t = torch.rand(5, len(joint_topology) * 3)
     print(x_t.shape)
 
     stat_enc = StaticEncoder(edges)
@@ -392,7 +459,7 @@ def test_models():
     print("\n----------------------------\n")
 
     print("Dynamic encodder")
-    x_m = torch.rand(1, len(edges)*4 + 3, 64)
+    x_m = torch.rand(5, len(edges)*4 + 3, 64)
     print(x_m.shape)
     dynamic_enc = DynamicEncoder(edges, skeleton_info='')
     lat_m = dynamic_enc(x_m)
@@ -402,35 +469,65 @@ def test_models():
     print(res_m.shape)
     print("\n----------------------------\n")
 
-    # print("Dynamic encodder with offset")
-    # x_ = torch.rand(1, len(edges)*4 + 3, 64)
-    # offsets_enc = [x_t, lat_t.T]
-    # print(x_.shape)
-    # print(offsets_enc[0].shape, offsets_enc[1].shape)
-    # dynamic_enc = DynamicEncoder(edges)
-    # lat_m = dynamic_enc(x_, offsets_enc)
-    # offsets_dec = [lat_t, res_t]
-    # print(lat_m.shape)
-    # dynamic_dec = DynamicDecoder(dynamic_enc)
-    # res_m = dynamic_dec(lat_m, offsets_dec).transpose(-2, -1)
-    # print(res_m.shape)
-    print("Mocap Solver")
-    num_markers = 56
-    window_size = 64
-    x = torch.rand(5, 64, 56, 3)
-    print(x.shape)
-    ms = MocapSolver(num_markers, window_size, 1024, use_motion=True)
-    res_ms = ms(x)
-    print("Results")
-    for res in res_ms:
-        print(res.shape)
-    enc = DynamicEncoder(edges, skeleton_info='')
-    dec = DynamicDecoder(enc, skeleton_info='')
-    lat_m_ms = res_ms[0]
-    lat_m_ms = lat_m_ms.view(lat_m_ms.shape[0], 16, -1)
-    print(lat_m_ms.shape)
-    res_dec = dec(lat_m_ms)
-    print(res_dec.shape)
+    print("Dynamic encodder with offset")
+    x_ = torch.rand(5, len(edges)*4 + 3, 64)
+    offsets_enc = [x_t, lat_t.T]
+    print(x_.shape)
+    print(offsets_enc[0].shape, offsets_enc[1].shape)
+    dynamic_enc = DynamicEncoder(edges)
+    lat_m = dynamic_enc(x_, offsets_enc)
+    offsets_dec = [lat_t.T, res_t]
+    print(lat_m.shape)
+    print("Decoder")
+    print(offsets_dec[0].shape, offsets_dec[1].shape)
+    dynamic_dec = DynamicDecoder(dynamic_enc)
+    res_m = dynamic_dec(lat_m, offsets_dec).transpose(-2, -1)
+    print(res_m.shape)
+    print("\n----------------------------\n")
+
+    print("Marker encodder with offset")
+    x_c = torch.rand(5, 56 * 24 * 3)
+    offsets_enc = [x_t, lat_t.T]
+    print(x_c.shape)
+    print(offsets_enc[0].shape, offsets_enc[1].shape)
+    marker_enc = MarkerEncoder(x_c.shape[1], 1024, offset_dims=[75, 168])
+    lat_c = marker_enc(x_c, offsets_enc)
+    offsets_dec = [lat_t.T, res_t]
+    print(lat_c.shape)
+    print("Decoder")
+    print(offsets_dec[0].shape, offsets_dec[1].shape)
+    marker_dec = MarkerDecoder(marker_enc)
+    res_c = marker_dec(lat_c, offsets_dec).view(5, 56, 24, 3)
+    print(res_c.shape)
+    print("\n----------------------------\n")
+
+    print("AutoEncoder")
+    x_c = torch.rand(5, 56 * 25 * 3)
+    x_m = torch.rand(5, len(edges)*4 + 3, 64)
+    x_t = torch.rand(5, len(joint_topology) * 3)
+    auto_encoder = AE(edges, 56, 25, 1024, offset_dims=[75, 168])
+    outs = auto_encoder(x_c, x_t, x_m)
+    for out in outs:
+        print(out.shape)
+
+    # print("Mocap Solver")
+    # num_markers = 56
+    # window_size = 64
+    # x = torch.rand(5, 64, 56, 3)
+    # print(x.shape)
+    # ms = MocapSolver(num_markers, window_size, 1024, use_motion=True)
+    # res_ms = ms(x)
+    # print("Results")
+    # for res in res_ms:
+    #     print(res.shape)
+    # enc = DynamicEncoder(edges, skeleton_info='')
+    # dec = DynamicDecoder(enc, skeleton_info='')
+    # lat_m_ms = res_ms[0]
+    # lat_m_ms = lat_m_ms.view(lat_m_ms.shape[0], 16, -1)
+    # print(lat_m_ms.shape)
+    # res_dec = dec(lat_m_ms)
+    # print(res_dec.shape)
+    # print("\n----------------------------\n")
 
 
 if __name__ == "__main__":

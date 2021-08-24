@@ -7,7 +7,7 @@ import numpy as np
 
 class SkeletonConv(nn.Module):
     def __init__(self, neighbour_list, in_channels, out_channels, kernel_size, joint_num, stride=1, padding=0,
-                 bias=True, padding_mode='zeros', add_offset=False, in_offset_channel=0):#, last_conv=False):
+                 bias=True, padding_mode='zeros', add_offset=False, in_offset_channel=0, num_joints=None):#, last_conv=False):
         self.in_channels_per_joint = in_channels // joint_num
         self.out_channels_per_joint = out_channels // joint_num
         if in_channels % joint_num != 0 or out_channels % joint_num != 0:
@@ -38,9 +38,7 @@ class SkeletonConv(nn.Module):
             self.expanded_neighbour_list.append(expanded)
 
         if self.add_offset:
-            # if last_conv:
-            #     offset_in_ch = len(neighbour_list) // 2 * in_offset_channel * 4
-            self.offset_enc = SkeletonLinear(neighbour_list, in_offset_channel * len(neighbour_list), out_channels)
+            self.offset_enc = SkeletonLinear(neighbour_list, in_offset_channel * num_joints, out_channels)
 
             for neighbour in neighbour_list:
                 expanded = []
@@ -146,7 +144,7 @@ class SkeletonLinear(nn.Module):
         self.mask = nn.Parameter(self.mask, requires_grad=False)
 
     def forward(self, input):
-        input = input.reshape(input.shape[0], -1)
+        input = input.view(input.shape[0], -1)
         weight_masked = self.weight * self.mask
         res = F.linear(input, weight_masked, self.bias)
         if self.extra_dim1: res = res.reshape(res.shape + (1,))
