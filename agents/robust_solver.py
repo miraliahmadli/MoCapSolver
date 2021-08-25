@@ -13,11 +13,8 @@ from mocap_dataset import MoCap
 import models
 from models.loss import Holden_loss
 
-from tools.utils import svd_rot_torch as svd_solver
-from tools.utils import LBS_torch as LBS
-from tools.utils import corrupt_torch as corrupt
-from tools.utils import preweighted_Z, xform_to_mat44_torch, symmetric_orthogonalization
-
+from tools.utils import LBS, corrupt, preweighted_Z, xform_to_mat44, symmetric_orthogonalization
+from tools.utils import svd_rot as svd_solver
 from tools.preprocess import weight_assign
 from tools.statistics import *
 from tools.transform import transformation_diff
@@ -315,7 +312,7 @@ class RS_Agent:
                 loss_tr /= bs
                 loss = loss_tr + loss_rot
 
-                Y_hat_4x4 = xform_to_mat44_torch(Y_hat, self.device)
+                Y_hat_4x4 = xform_to_mat44(Y_hat, self.device)
                 Y_ = F @ Y_hat_4x4
                 Y_ = Y_.cpu().detach().numpy()
                 np.save(f"asd.npy", Y_)

@@ -1,7 +1,6 @@
 import torch
-import numpy as np
 
-from tools.utils import xform_inv_np, xform_inv_torch, xform_to_mat44_np, xform_to_mat44_torch, svd_rot_np, svd_rot_torch
+from tools.utils import xform_inv, xform_to_mat44, svd_rot
 
 main_labels =\
         ['C7', 'CLAV', 'LANK', 'LBHD', 'LBWT', 'LELB', 'LFHD', 'LFIN', 
@@ -36,7 +35,7 @@ def weight_assign(joint_to_marker_file, num_marker=41, num_joints=31):
     return w
 
 
-def get_Z_np(X, Y):
+def get_Z(X, Y):
     '''
     Local offset computation function
 
@@ -47,26 +46,7 @@ def get_Z_np(X, Y):
     Return:
         Z: local offsets, dim: (n, m, j, 3)
     '''
-    Y_inv = xform_inv_np(Y) # n x j x 3 x 4
-
-    X_expand = np.expand_dims(X, axis = -1) # n x m x 3 x 1
-
-    Y_inv_rot = np.expand_dims(Y_inv[..., : 3], 2) # n x m x 1 x 3 x 3
-    Y_inv_tr = np.expand_dims(Y_inv[..., 3: ], 2) # n x m x 1 x 3 x 1
-
-    Z = np.matmul(Y_inv_rot, np.expand_dims(X_expand, 1)) + Y_inv_tr
-    Z = Z.transpose((0, 2, 1, 3, 4))
-    Z = np.squeeze(Z)
-
-    zeros = (X == 0.0)
-    nans = zeros.any(axis=-1)
-
-    Z[nans] = 0.0
-    return Z
-
-
-def get_Z_torch(X, Y):
-    Y_inv = xform_inv_torch(Y) # n x j x 3 x 4
+    Y_inv = xform_inv(Y) # n x j x 3 x 4
 
     X_expand = torch.unsqueeze(X, axis = -1) # n x m x 3 x 1
 
@@ -84,7 +64,7 @@ def get_Z_torch(X, Y):
     return Z
 
 
-def clean_XY_np(X_read, Y_read, avg_bone_read, m_conv=0.56444, del_nans=False):#0.57803):
+def clean_XY(X_read, Y_read, avg_bone_read, m_conv=0.56444, del_nans=False):#0.57803):
     '''
     Clean XYZ
 ​
@@ -100,29 +80,6 @@ def clean_XY_np(X_read, Y_read, avg_bone_read, m_conv=0.56444, del_nans=False):#
         Y: cleaned rotation + translation matrices, dim: (n, j, 3, 4)
         Z: local offsets, dim: (n, m, j, 3)
     '''
-    X = np.nan_to_num(X_read, nan=0.0, posinf=0.0, neginf=0.0)
-    X = X.transpose(2, 1, 0)
-    X = X[..., : 3]
-    
-    zeros = (X == 0.0)
-    nans = ~(zeros.any(axis=-1).any(axis=-1))
-
-    avg_bone = avg_bone_read
-    if del_nans:
-        X = X[nans]
-        avg_bone = avg_bone_read[nans]
-    X *= (0.01 / (avg_bone[..., None] * m_conv))
-    X = X[..., [1, 2, 0]]
-
-    Y = Y_read.copy()
-    if del_nans:
-        Y = Y[nans]
-    Y[..., 3] *= (1.0 / avg_bone[..., None])
-
-    return X, Y, avg_bone
-
-
-def clean_XY_torch(X_read, Y_read, avg_bone_read, m_conv=0.56444, del_nans=False):#0.57803):
     X = torch.nan_to_num(X_read, nan=0.0, posinf=0.0, neginf=0.0)
     X = X.permute(2, 1, 0)
     X = X[..., : 3]
@@ -145,7 +102,7 @@ def clean_XY_torch(X_read, Y_read, avg_bone_read, m_conv=0.56444, del_nans=False
     return X, Y, avg_bone
 
 
-def local_frame_np(X, Y, X_mean):
+def local_frame(X, Y, X_mean, device="cuda"):
     '''
     Local frame F calculation function
     rot: Rotation of local_frame_joint
@@ -160,41 +117,28 @@ def local_frame_np(X, Y, X_mean):
         Y_local: Y fitted into local frame, dim: (n, j, 3, 4)
     '''
     X_picked = X[:, local_frame_markers, :]
-    R, t = svd_rot_np(X_mean.transpose(1, 2, 0), X_picked.transpose(0, 2, 1))
-
-    F = np.concatenate([R, t], axis=-1)
-    F_inv = xform_inv_np(F)
-    F_inv_expand = np.expand_dims(F_inv, 1)
-
-    Y_44 = xform_to_mat44_np(Y)
-    Y_local = np.matmul(F_inv_expand, Y_44)
-    return F, Y_local
-
-
-def local_frame_torch(X, Y, X_mean, device="cuda"):
-    X_picked = X[:, local_frame_markers, :]
-    R, t = svd_rot_torch(X_mean.permute(1, 2, 0), X_picked.permute(0, 2, 1))
+    R, t = svd_rot(X_mean.permute(1, 2, 0), X_picked.permute(0, 2, 1))
 
     F = torch.cat([R, t], axis=-1)
 
-    F_inv = xform_inv_torch(F)
+    F_inv = xform_inv(F)
     F_inv_expand = torch.unsqueeze(F_inv, 1)
 
-    Y_44 = xform_to_mat44_torch(Y, device)
+    Y_44 = xform_to_mat44(Y, device)
     Y_local = torch.matmul(F_inv_expand, Y_44)
 
     return F, Y_local
 
 
 if __name__ == "__main__":
-    x = np.random.rand(100, 41, 3)
-    y = np.random.rand(100, 31, 3, 4)
+    x = torch.rand(100, 41, 3)
+    y = torch.rand(100, 41, 3)
 
-    x_, y_ = local_frame_np(x, y)
+    x_, y_ = local_frame(x, y)
 
     x = torch.Tensor(x).to("cuda")
     y = torch.Tensor(y).to("cuda")
-    x_2, y_2 = local_frame_torch(x, y)
+    x_2, y_2 = local_frame(x, y)
 
     x_ = torch.Tensor(x_).to("cuda")
     y_ = torch.Tensor(y_).to("cuda")

@@ -5,10 +5,8 @@ import multiprocess
 
 import torch
 from torch.utils.data import Dataset
+from tools.preprocess import clean_XY, get_Z, local_frame
 
-from tools.preprocess import clean_XY_np as clean_data
-from tools.preprocess import get_Z_torch as get_Z
-from tools.preprocess import local_frame_torch as local_frame
 
 class MoCap(Dataset):
     def __init__(self, csv_file, fnames, lrf_mean_markers_file, num_marker, num_joint, test=False):
@@ -25,7 +23,10 @@ class MoCap(Dataset):
             X_read = np.load(marker_path)
             Y_read = np.load(motion_path)
             avg_bone_read = np.broadcast_to(avg_bone, (Y_read.shape[0], 1))
-            X, Y, avg_bone = clean_data(X_read, Y_read, avg_bone_read)
+            X_read = torch.tensor(X_read)
+            Y_read = torch.tensor(Y_read)
+            avg_bone_read = torch.tensor(avg_bone_read)
+            X, Y, avg_bone = clean_XY(X_read, Y_read, avg_bone_read)
             assert X.shape[0] == Y.shape[0]
             assert X.shape[0] == avg_bone.shape[0]
             return (X, Y, avg_bone)

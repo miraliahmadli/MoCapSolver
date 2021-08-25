@@ -2,7 +2,7 @@ import torch
 import numpy as np
 
 
-def xform_to_mat44_np(X):
+def xform_to_mat44(X, device="cuda"):
     '''
     Converts 3 x 4 rigid body tranformations to 4 x 4
 
@@ -12,14 +12,6 @@ def xform_to_mat44_np(X):
     Return:
         X_44: 4 x 4 rigid body transformation matrix, dim: (..., 4, 4)
     '''
-    af = np.array([0, 0, 0, 1]).reshape((1, 4))
-    bshape = X.shape[: -2] + af.shape
-    X_44 = np.concatenate([X, np.broadcast_to(af, bshape)], axis = -2)
-
-    return X_44
-
-
-def xform_to_mat44_torch(X, device="cuda"):
     shape = X.shape[: -2] + (1, 4)
     affine = torch.zeros(shape, device=device)
     affine[..., -1] = 1
@@ -28,7 +20,7 @@ def xform_to_mat44_torch(X, device="cuda"):
     return X_44
 
 
-def xform_inv_np(Y):
+def xform_inv(Y):
     '''
     Inverse of the rigid body transformation
 
@@ -39,17 +31,6 @@ def xform_inv_np(Y):
         Y_inv: Inverse of rigid body transformation matrix, dim: (..., 3, 4)
     '''
     T, R = Y[..., 3: ], Y[..., :3]
-    R_inv = np.swapaxes(R, -1, -2)
-    T_inv = -T
-
-    R_x_T = np.matmul(R_inv, T_inv)
-    Y_inv = np.concatenate([R_inv, R_x_T], axis = -1)
-    
-    return Y_inv
-
-
-def xform_inv_torch(Y):
-    T, R = Y[..., 3: ], Y[..., :3]
     R_inv = R.transpose(-1, -2)
     T_inv = -T
 
@@ -59,7 +40,7 @@ def xform_inv_torch(Y):
     return Y_inv
 
 
-def LBS_np(w, Y, Z):
+def LBS(w, Y, Z, device="cuda"):
     '''
     Linear Blend Skinning function
 
@@ -71,27 +52,6 @@ def LBS_np(w, Y, Z):
     Return:
         X: global marker positions, dim: (n, m, 3)
     '''
-    m, j = w.shape
-    n = Z.shape[0]
-
-    w_ = w.transpose(1, 0) # j x m
-
-    z_padding = np.ones((n, m, j, 1))
-    Z_ = np.concatenate((Z, z_padding), axis=3)
-    Z_ = Z_.transpose(2, 0, 3, 1) # j x n x 4 x m
-
-    Y_ = Y.transpose(1, 0, 2, 3) # j x n x 3 x 4
-
-    prod = np.matmul(Y_, Z_).transpose(0, 3, 1, 2) # j x m x n x 3
-
-    X = np.sum(
-            np.multiply(prod, w_.reshape((j, m, 1, 1))), 
-            axis=0).transpose(1, 0, 2) # n x m x 3
-
-    return X
-
-
-def LBS_torch(w, Y, Z, device="cuda"):
     m, j = w.shape
     n = Z.shape[0]
 
@@ -112,7 +72,7 @@ def LBS_torch(w, Y, Z, device="cuda"):
     return X
 
 
-def svd_rot_np(P, Q):
+def svd_rot(P, Q):
     '''
     Implementation of "Least-Squares Rigid Motion Using SVD"
     https://igl.ethz.ch/projects/ARAP/svd_rot.pdf
@@ -126,37 +86,6 @@ def svd_rot_np(P, Q):
         t = q_mean - R*p_mean
         R = V * D * U.T
     '''
-    assert P.shape[-2:] == Q.shape[-2:]
-    d, n = P.shape[-2:]
-
-    # X,Y are n x k
-    P_ = np.sum(P, axis=-1) / n
-    Q_ = np.sum(Q, axis=-1) / n
-    X = P - P_[..., None]
-    Y = Q - Q_[..., None]
-    Yt = Y.transpose(0, 2, 1)
-
-    # S is n x n
-    S = X @ Yt
-
-    # U, V are n x m
-    U, _, V_t = np.linalg.svd(S)
-    V = V_t.transpose(0, 2, 1)
-    Ut = U.transpose(0, 2, 1)
-
-    det = np.linalg.det(V @ Ut)
-    Ut[:, -1, :] *= det.reshape((-1, 1))
-
-    # R is n x n
-    R = V @ Ut
-
-    # t is n x k
-    t = Q_.reshape((-1, d, 1)) - R @ P_.reshape((-1, d, 1))
-
-    return R, t
-
-
-def svd_rot_torch(P, Q):
     assert P.shape[-2:] == Q.shape[-2:]
     d, n = P.shape[-2:]
 
@@ -205,7 +134,7 @@ def symmetric_orthogonalization(x):
   return r
 
 
-def corrupt_np(X, sigma_occ=0.1, sigma_shift=0.1, beta=0.5):
+def corrupt(X, sigma_occ=0.1, sigma_shift=0.1, beta=.5, device="cuda"):
     '''
     Given marker data X as input this algorithm is used
     to randomly occlude markers (placing them at zero) or shift markers
@@ -223,33 +152,6 @@ def corrupt_np(X, sigma_occ=0.1, sigma_shift=0.1, beta=0.5):
     Returns:
         X_hat: corrupted X with same dimension
     '''
-    n, m, _ = X.shape
-    
-    # Sample probability at which to occlude / shift markers.
-    a_occ = np.random.normal(0, sigma_occ, n) # (n, )
-    a_shift = np.random.normal(0, sigma_shift, n) # (n, )
- 
-    # Sample using clipped probabilities if markers are occluded / shifted.
-    a_occ = np.abs(a_occ)
-    a_occ[a_occ > 2*sigma_occ] = 2*sigma_occ
-
-    a_shift = np.abs(a_shift)
-    a_shift[a_shift > 2*sigma_shift] = 2*sigma_shift
-
-    X_occ = np.array([np.random.binomial(1, occ, size=m) for occ in a_occ]) # n x m
-    X_shift = np.array([np.random.binomial(1, shift, size=m) for shift in a_shift]) # n x m
-    
-    # Sample the magnitude by which to shift each marker.
-    X_v = np.random.uniform(-beta, beta, (m, 3)) # n x m x 3
-
-    # Move shifted markers and place occluded markers at zero.
-    X_hat = X + np.multiply(X_v, X_shift.reshape((n, m, 1)))
-    X_hat = np.multiply(X_hat, (1 - X_occ).reshape((n, m, 1)))
-
-    return X_hat
-
-
-def corrupt_torch(X, sigma_occ=0.1, sigma_shift=0.1, beta=.5, device="cuda"):
     n, m, _ = X.shape
     
     # Sample probability at which to occlude / shift markers.
@@ -290,73 +192,30 @@ def test_lbs():
     n = 20
     j = 31
     m = 41
-
-    w = np.random.rand(m, j)
-    Z = np.random.rand(n, m, j, 3)
-    Y = np.random.rand(n, j, 3, 4)
-    X_ = LBS_np(w, Y, Z)
-    X_ = torch.Tensor(X_)
-    print(X_.shape)
-
-    # w = np.ones((m, j))
-    # Z = np.ones((n, m, j, 3))*15.4
-    # Y = np.ones((n, j, 3, 4))*30.3
-
-    # Z = np.arange(n*m*j*3).reshape((n, m, j, 3))
-    # Y = np.arange(n*j*12).reshape((n, j, 3, 4))
-
-    w = torch.Tensor(w)
-    Z = torch.Tensor(Z)
-    Y = torch.Tensor(Y)
-    X = LBS_torch(w, Y, Z)
+    w = torch.rand(m, j)
+    Z = torch.rand(n, m, j, 3)
+    Y = torch.rand(n, j, 3, 4)
+    X = LBS(w, Y, Z)
     print(X.shape)
-    diff = torch.abs(X_ - X).sum().data
-    print(torch.max(torch.abs(X_ - X)))
-    print(diff)
 
 
 def test_svd():
     d = 3
     n = 20
     m = 100
-
-    # w = np.random.rand(m, n, 1)
-    P = np.random.rand(m, d, n)
-    Q = np.random.rand(m, d, n)
-    R_, t_ = svd_rot_np(P, Q)
-    R_ = torch.Tensor(R_)
-    t_ = torch.Tensor(t_)
-    print(R_.shape)
-    print(t_.shape)
-
-    # w = torch.Tensor(w)
-    P = torch.Tensor(P)
-    Q = torch.Tensor(Q)
-    R, t = svd_rot_torch(P, Q)
-    # R = R.cpu().detach().numpy()
-    # t = t.cpu().detach().numpy()
+    P = torch.rand(m, d, n)
+    Q = torch.rand(m, d, n)
+    R, t = svd_rot(P, Q)
     print(R.shape)
     print(t.shape)
-    diff_r = torch.abs(R_ - R).sum().data
-    diff_t = torch.abs(t_ - t).sum().data
-    print(torch.max(torch.abs(R_ - R)))
-    print(torch.max(torch.abs(t_ - t)))
-    print(diff_r, diff_t)
 
 
 def test_corrupt():
     n = 20
     m = 31
-    X = np.random.rand(n, m, 3)
-    X_hat_np = corrupt_np(X)
-    X_hat_np = torch.Tensor(X_hat_np)
-    print(X_hat_np.shape)
-    X = torch.Tensor(X)
-    X_hat = corrupt_torch(X)
+    X = torch.rand(n, m, 3)
+    X_hat = corrupt(X)
     print(X_hat.shape)
-    diff = torch.abs(X_hat - X_hat_np).sum().data
-    print(torch.max(torch.abs(X_hat - X_hat_np)))
-    print(diff)
 
 
 if __name__ == "__main__":

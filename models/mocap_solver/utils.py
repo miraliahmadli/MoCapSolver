@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 from models.loss import weighted_L1_loss
-from tools.utils import LBS_torch as LBS
+from tools.utils import LBS
 
 
 class ResidualBlock(nn.Module):
