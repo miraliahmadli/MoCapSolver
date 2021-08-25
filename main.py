@@ -6,7 +6,7 @@ import argparse
 from easydict import EasyDict
 import wandb
 
-from train import Agent
+from agents.robust_solver import RS_Agent
 
 
 def parse_arguments():
@@ -35,17 +35,17 @@ def main():
     args = parse_arguments()
     cfg = read_cfg(args.config)
     if args.mode == 'train':
-        agent = Agent(cfg)
+        agent = RS_Agent(cfg)
         agent.train()
     elif args.mode == "test":
-        agent = Agent(cfg, True)
+        agent = RS_Agent(cfg, True)
         agent.test_one_animation()
     elif args.mode == "sweep":
         with open(args.sweep_config) as f:
             sweep_cfg = json.loads(f.read())
         sweep_id = wandb.sweep(sweep_cfg, project='denoising', entity='mocap')
         cfg.sweep_id = sweep_id
-        agent = Agent(cfg, sweep=True)
+        agent = RS_Agent(cfg, sweep=True)
         wandb.agent(sweep_id, agent.train)
 
     else:

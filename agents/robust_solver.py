@@ -10,18 +10,20 @@ from torch.optim.lr_scheduler import MultiStepLR, ExponentialLR
 import wandb
 
 from mocap_dataset import MoCap
-from models.baseline import Baseline
-from models.least_square import LS_solver
+import models
+from models.loss import Holden_loss
+
 from tools.utils import svd_rot_torch as svd_solver
 from tools.utils import LBS_torch as LBS
 from tools.utils import corrupt_torch as corrupt
 from tools.utils import preweighted_Z, xform_to_mat44_torch, symmetric_orthogonalization
+
 from tools.preprocess import weight_assign
 from tools.statistics import *
 from tools.transform import transformation_diff
 
 
-class Agent:
+class RS_Agent:
     def __init__(self, cfg, test=False, sweep=False):
         self.cfg = cfg
         self.checkpoint_dir = cfg.model_dir
@@ -65,10 +67,10 @@ class Agent:
             use_svd = self.cfg.model.baseline.use_svd
             num_layers = self.cfg.model.baseline.num_layers
             
-            self.model = Baseline(self.num_markers, self.num_joints, hidden_size, num_layers, use_svd)
+            self.model = models.Baseline(self.num_markers, self.num_joints, hidden_size, num_layers, use_svd)
         elif used == "least_square":
             w = weight_assign('dataset/joint_to_marker_three2one.txt').to(self.device)
-            self.model = LS_solver(self.num_joints, w, self.device)
+            self.model = models.LS_solver(self.num_joints, w, self.device)
         else:
             raise NotImplementedError
         # if torch.cuda.device_count() > 1:
@@ -169,7 +171,7 @@ class Agent:
                                     sample_markers=self.cfg.training_settings.train_set.sample,\
                                     corrupt_markers=self.cfg.training_settings.train_set.corrupt)
 
-            loss_rot, loss_tr = self.criterion(Y_hat, Y)
+            loss_rot, loss_tr = self.criterion(Y, Y_hat)
             loss = loss_tr + loss_rot
 
             self.optimizer.zero_grad()
@@ -235,7 +237,7 @@ class Agent:
                                     sample_markers=self.cfg.training_settings.val_set.sample,\
                                     corrupt_markers=self.cfg.training_settings.val_set.corrupt)
 
-                loss_rot, loss_tr = self.criterion(Y_hat, Y)
+                loss_rot, loss_tr = self.criterion(Y, Y_hat)
                 loss = loss_tr + loss_rot
 
                 total_loss += loss.item() #/ (self.num_joints * 3 * 4)
@@ -308,7 +310,7 @@ class Agent:
                                     sample_markers=self.cfg.training_settings.val_set.sample,
                                     corrupt_markers=self.cfg.training_settings.val_set.corrupt)
 
-                loss_rot, loss_tr = self.criterion(Y_hat, Y)
+                loss_rot, loss_tr = self.criterion(Y, Y_hat)
                 loss_rot /= bs
                 loss_tr /= bs
                 loss = loss_tr + loss_rot
@@ -342,13 +344,6 @@ class Agent:
             Y_hat = denormalize_Y(Y_hat, Y)
         return Y_hat
 
-    def custom_l1_loss(self, Y_hat, Y):
-        R_hat, t_hat = Y_hat[..., :3], Y_hat[..., 3:]
-        R, t = Y[..., :3], Y[..., 3:]
-        loss_rot = torch.sum(self.user_weights_rot * torch.abs(R_hat - R))
-        loss_tr = torch.sum(self.user_weights_t * torch.abs(t_hat - t))
-        return loss_rot, loss_tr
-
     def lr_scheduler(self, last_epoch):
         scheduler = self.cfg.lr_scheduler.used
         if scheduler == "ExponentialLR":
@@ -368,8 +363,7 @@ class Agent:
                                     weight_decay=self.cfg.optimizer.AmsGrad.weight_decay, amsgrad=True)
 
     def build_loss_function(self):
-        return self.custom_l1_loss
-        # return nn.L1Loss(reduction='sum')
+        return Holden_loss(self.user_weights_t, self.user_weights_rot)
     
     def default_cfg(self):
         return {
