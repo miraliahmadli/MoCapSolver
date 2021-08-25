@@ -6,8 +6,9 @@ import numpy as np
 
 
 class SkeletonConv(nn.Module):
-    def __init__(self, neighbour_list, in_channels, out_channels, kernel_size, joint_num, stride=1, padding=0,
-                 bias=True, padding_mode='zeros', add_offset=False, in_offset_channel=0, num_joints=None):#, last_conv=False):
+    def __init__(self, neighbour_list, in_channels, out_channels, kernel_size, joint_num, 
+                 stride=1, padding=0, bias=True, padding_mode='zeros', 
+                 add_offset=False, in_offset_channel=0, offset_joint_num=None):
         self.in_channels_per_joint = in_channels // joint_num
         self.out_channels_per_joint = out_channels // joint_num
         if in_channels % joint_num != 0 or out_channels % joint_num != 0:
@@ -38,7 +39,7 @@ class SkeletonConv(nn.Module):
             self.expanded_neighbour_list.append(expanded)
 
         if self.add_offset:
-            self.offset_enc = SkeletonLinear(neighbour_list, in_offset_channel * num_joints, out_channels)
+            self.offset_enc = SkeletonLinear(neighbour_list, in_offset_channel * offset_joint_num, out_channels)
 
             for neighbour in neighbour_list:
                 expanded = []
@@ -158,7 +159,7 @@ class SkeletonPool(nn.Module):
     Pooling is applied to skeletal branches with a consecutive 
     sequence of edges that connect nodes of degree 2
     '''
-    def __init__(self, edges, pooling_mode, channels_per_edge, num_joints=31, last_pool=False):
+    def __init__(self, edges, pooling_mode, channels_per_edge, last_pool=False):
         super(SkeletonPool, self).__init__()
 
         if pooling_mode != 'mean':
@@ -170,7 +171,7 @@ class SkeletonPool(nn.Module):
         self.seq_list = []
         self.pooling_list = []
         self.new_edges = []
-        self.degree = [0] * num_joints
+        self.degree = [0] * 100
 
         for edge in edges:
             self.degree[edge[0]] += 1
