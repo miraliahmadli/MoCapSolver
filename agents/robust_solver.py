@@ -11,7 +11,7 @@ import wandb
 
 import models
 from models.loss import Holden_loss
-from datasets.robust_solver import RS_Dataset
+from datasets.robust_solver import RS_Dataset, RS_Test_Dataset
 
 from tools.utils import LBS, corrupt, preweighted_Z, xform_to_mat44, symmetric_orthogonalization
 from tools.utils import svd_rot as svd_solver
@@ -44,8 +44,8 @@ class RS_Agent:
         if self.cfg.use_gpu and torch.cuda.is_available():
             print(torch.cuda.get_device_name(torch.cuda.current_device()))
         self.w = self.w.to(self.device)
-        self.user_weights_rot = torch.tensor(self.user_weights_rot, device=self.device).unsqueeze(0).unsqueeze(-1).unsqueeze(-1) / 3
-        self.user_weights_t = torch.tensor(self.user_weights_t, device=self.device).unsqueeze(0).unsqueeze(-1).unsqueeze(-1)
+        self.user_weights_rot = torch.tensor(self.user_weights_rot, device=self.device)[None, ..., None, None] / 3
+        self.user_weights_t = torch.tensor(self.user_weights_t, device=self.device)[None, ..., None, None]
         self.sampler = self.load_sampler()
         self.model = None
 
@@ -75,9 +75,9 @@ class RS_Agent:
         self.model.to(self.device)
 
     def load_data(self):
-        self.train_dataset = RS_Dataset(csv_file=self.cfg.csv_file , fnames=self.cfg.train_filenames, lrf_mean_markers_file=self.cfg.lrf_mean_markers,\
+        self.train_dataset = RS_Dataset(csv_file=self.cfg.csv_file , file_stems=self.cfg.train_filenames, lrf_mean_markers_file=self.cfg.lrf_mean_markers,\
                                 num_marker=self.num_markers, num_joint=self.num_joints)
-        self.val_dataset = RS_Dataset(csv_file=self.cfg.csv_file , fnames=self.cfg.val_filenames, lrf_mean_markers_file=self.cfg.lrf_mean_markers,\
+        self.val_dataset = RS_Dataset(csv_file=self.cfg.csv_file , file_stems=self.cfg.val_filenames, lrf_mean_markers_file=self.cfg.lrf_mean_markers,\
                                 num_marker=self.num_markers, num_joint=self.num_joints)
 
         self.train_steps = len(self.train_dataset) // self.cfg.batch_size
@@ -148,6 +148,29 @@ class RS_Agent:
         self.train_writer.close()
         self.val_writer.close()
 
+    def run_batch(self, Y, Z, avg_bone, bs, sample_markers, corrupt_markers):
+        if sample_markers:
+            Z = self.sampler.sample((bs, )).view(-1, self.num_markers, self.num_joints, 3)
+
+        X = LBS(self.w, Y, Z, device=self.device)
+        if corrupt_markers:
+            beta = 0.05 / (self.conv_to_m * avg_bone)
+            X_hat = corrupt(X, beta=beta.view(-1), device=self.device)
+        else:
+            X_hat = X
+
+        if self.cfg.model.used.lower() == "least_square":
+            X = X_hat
+        else:
+            X = normalize_X(X_hat, X)
+            Z_pw = preweighted_Z(self.w, Z)
+            Z = normalize_Z_pw(Z_pw)
+
+        Y_hat = self.model(X, Z).view(bs, self.num_joints, 3, 4)
+        if self.cfg.model.used.lower() != "least_square":
+            Y_hat = denormalize_Y(Y_hat, Y)
+        return Y_hat
+
     def train_per_epoch(self, epoch):
         tqdm_batch = tqdm(total=self.train_steps, dynamic_ncols=True) 
         total_loss = 0
@@ -179,7 +202,7 @@ class RS_Agent:
             total_loss_rot += loss_rot.item()
             total_loss_tr += loss_tr.item()
 
-            avg_bone = avg_bone.unsqueeze(-1).unsqueeze(-1)
+            avg_bone = avg_bone[..., None, None]
             Y_h = Y_hat.detach().clone()
             Y_ = Y.detach().clone()
             Y_h[..., 3] *= (self.conv_to_m * avg_bone * 100)
@@ -241,7 +264,7 @@ class RS_Agent:
                 total_loss_rot += loss_rot.item()
                 total_loss_tr += loss_tr.item()
 
-                avg_bone = avg_bone.unsqueeze(-1).unsqueeze(-1)
+                avg_bone = avg_bone[..., None, None]
                 Y_h = Y_hat.detach().clone()
                 Y_ = Y.detach().clone()
                 Y_h[..., 3] *= (self.conv_to_m * avg_bone * 100)
@@ -277,8 +300,8 @@ class RS_Agent:
         return total_loss, message
 
     def test_one_animation(self):
-        self.test_dataset = RS_Dataset(csv_file=self.cfg.csv_file , fnames=self.cfg.test_filenames,\
-                                num_marker=self.num_markers, num_joint=self.num_joints, test=True)
+        self.test_dataset = RS_Test_Dataset(csv_file=self.cfg.csv_file , file_stems=self.cfg.test_filenames,\
+                                num_marker=self.num_markers, num_joint=self.num_joints)
 
         self.test_steps = len(self.test_dataset)
 
@@ -318,29 +341,6 @@ class RS_Agent:
                 np.save(f"asd.npy", Y_)
                 print("loss={0:.4f}".format(loss.item()))
 
-    def run_batch(self, Y, Z, avg_bone, bs, sample_markers, corrupt_markers):
-        if sample_markers:
-            Z = self.sampler.sample((bs, )).view(-1, self.num_markers, self.num_joints, 3)
-
-        X = LBS(self.w, Y, Z, device=self.device)
-        if corrupt_markers:
-            beta = 0.05 / (self.conv_to_m * avg_bone)
-            X_hat = corrupt(X, beta=beta.view(-1), device=self.device)
-        else:
-            X_hat = X
-
-        if self.cfg.model.used.lower() == "least_square":
-            X = X_hat
-        else:
-            X = normalize_X(X_hat, X)
-            Z_pw = preweighted_Z(self.w, Z)
-            Z = normalize_Z_pw(Z_pw)
-
-        Y_hat = self.model(X, Z).view(bs, self.num_joints, 3, 4)
-        if self.cfg.model.used.lower() != "least_square":
-            Y_hat = denormalize_Y(Y_hat, Y)
-        return Y_hat
-
     def lr_scheduler(self, last_epoch):
         scheduler = self.cfg.lr_scheduler.used
         if scheduler == "ExponentialLR":
@@ -361,13 +361,6 @@ class RS_Agent:
 
     def build_loss_function(self):
         return Holden_loss(self.user_weights_t, self.user_weights_rot)
-    
-    def default_cfg(self):
-        return {
-            "use_svd": self.cfg.model.baseline.use_svd,
-            "lr": self.cfg.optimizer.AmsGrad.lr,
-            "decay": self.cfg.lr_scheduler.ExponentialLR.decay
-        }
 
     def save_model(self, epoch):
         ckpt = {'model': self.model.state_dict(),
@@ -395,6 +388,13 @@ class RS_Agent:
             summary_writer.add_scalar(f'joint_{i+1}: avg translation diff', tr_diff[i], epoch)
         summary_writer.add_scalar('Rotational Error (deg)', torch.mean(ang_diff), epoch)
         summary_writer.add_scalar('Translation Error (mm)', torch.mean(tr_diff), epoch)
+
+    def default_cfg(self):
+        return {
+            "use_svd": self.cfg.model.baseline.use_svd,
+            "lr": self.cfg.optimizer.AmsGrad.lr,
+            "decay": self.cfg.lr_scheduler.ExponentialLR.decay
+        }
 
     def wandb_summary(self, training, losses, ang_diff, tr_diff, epoch):
         total_loss, total_loss_rot, total_loss_tr = losses
