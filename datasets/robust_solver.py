@@ -8,7 +8,7 @@ from torch.utils.data import Dataset
 from tools.preprocess import clean_XY, get_Z, local_frame
 
 
-class MoCap(Dataset):
+class RS_Dataset(Dataset):
     def __init__(self, csv_file, fnames, lrf_mean_markers_file, num_marker, num_joint, test=False):
         self.is_test = test
         with open(fnames) as f:

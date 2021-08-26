@@ -9,9 +9,9 @@ from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import MultiStepLR, ExponentialLR
 import wandb
 
-from mocap_dataset import MoCap
 import models
 from models.loss import Holden_loss
+from datasets.robust_solver import RS_Dataset
 
 from tools.utils import LBS, corrupt, preweighted_Z, xform_to_mat44, symmetric_orthogonalization
 from tools.utils import svd_rot as svd_solver
@@ -75,9 +75,9 @@ class RS_Agent:
         self.model.to(self.device)
 
     def load_data(self):
-        self.train_dataset = MoCap(csv_file=self.cfg.csv_file , fnames=self.cfg.train_filenames, lrf_mean_markers_file=self.cfg.lrf_mean_markers,\
+        self.train_dataset = RS_Dataset(csv_file=self.cfg.csv_file , fnames=self.cfg.train_filenames, lrf_mean_markers_file=self.cfg.lrf_mean_markers,\
                                 num_marker=self.num_markers, num_joint=self.num_joints)
-        self.val_dataset = MoCap(csv_file=self.cfg.csv_file , fnames=self.cfg.val_filenames, lrf_mean_markers_file=self.cfg.lrf_mean_markers,\
+        self.val_dataset = RS_Dataset(csv_file=self.cfg.csv_file , fnames=self.cfg.val_filenames, lrf_mean_markers_file=self.cfg.lrf_mean_markers,\
                                 num_marker=self.num_markers, num_joint=self.num_joints)
 
         self.train_steps = len(self.train_dataset) // self.cfg.batch_size
@@ -277,7 +277,7 @@ class RS_Agent:
         return total_loss, message
 
     def test_one_animation(self):
-        self.test_dataset = MoCap(csv_file=self.cfg.csv_file , fnames=self.cfg.test_filenames,\
+        self.test_dataset = RS_Dataset(csv_file=self.cfg.csv_file , fnames=self.cfg.test_filenames,\
                                 num_marker=self.num_markers, num_joint=self.num_joints, test=True)
 
         self.test_steps = len(self.test_dataset)
