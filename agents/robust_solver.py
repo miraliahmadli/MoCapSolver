@@ -9,6 +9,7 @@ from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import MultiStepLR, ExponentialLR
 import wandb
 
+from agents.base_agent import BaseAgent
 import models
 from models.loss import Holden_loss
 from datasets.robust_solver import RS_Dataset, RS_Test_Dataset
@@ -20,34 +21,20 @@ from tools.statistics import *
 from tools.transform import transformation_diff
 
 
-class RS_Agent:
+class RS_Agent(BaseAgent):
     def __init__(self, cfg, test=False, sweep=False):
-        self.cfg = cfg
-        self.checkpoint_dir = cfg.model_dir
-        self.is_test = test
+        super(RS_Agent, self).__init__(cfg, test)
         self.is_sweep = sweep
         self.conv_to_m = 0.56444#0.57803
-
-        self.num_markers = cfg.num_markers
-        self.num_joints = cfg.num_joints
-        self.batch_size = cfg.batch_size
 
         self.user_weights_rot = cfg.user_weights_rotation
         self.user_weights_t = cfg.user_weights_translation
         self.w = weight_assign(cfg.joint_to_marker, cfg.num_markers, cfg.num_joints)
 
-        if self.cfg.use_gpu and torch.cuda.is_available():
-            self.device =  torch.device(f'cuda:{self.cfg.gpu_idx}')
-        else:
-            self.device = torch.device("cpu")
-        print(self.device)
-        if self.cfg.use_gpu and torch.cuda.is_available():
-            print(torch.cuda.get_device_name(torch.cuda.current_device()))
         self.w = self.w.to(self.device)
         self.user_weights_rot = torch.tensor(self.user_weights_rot, device=self.device)[None, ..., None, None] / 3
         self.user_weights_t = torch.tensor(self.user_weights_t, device=self.device)[None, ..., None, None]
         self.sampler = self.load_sampler()
-        self.model = None
 
     def load_sampler(self):
         mu = np.load(self.cfg.sampler.mean_fname).reshape((self.num_markers,self.num_joints,3))
@@ -70,8 +57,7 @@ class RS_Agent:
             self.model = models.LS_solver(self.num_joints, w, self.device)
         else:
             raise NotImplementedError
-        # if torch.cuda.device_count() > 1:
-        #     self.model = nn.DataParallel(self.model)
+
         self.model.to(self.device)
 
     def load_data(self):
@@ -83,15 +69,10 @@ class RS_Agent:
         self.train_steps = len(self.train_dataset) // self.cfg.batch_size
         self.val_steps = len(self.val_dataset) // self.cfg.batch_size
 
-        # train_sampler = torch.utils.data.distributed.DistributedSampler(
-        #         self.train_dataset, num_replicas=torch.cuda.device_count() )
-        # val_sampler = torch.utils.data.distributed.DistributedSampler(
-        #         self.val_dataset, shuffle=False, num_replicas=torch.cuda.device_count())
-
         self.train_data_loader = DataLoader(self.train_dataset, batch_size=self.batch_size,\
-                                            shuffle=True, num_workers=8, pin_memory=True)#, sampler=train_sampler)
+                                            shuffle=True, num_workers=8, pin_memory=True)
         self.val_data_loader = DataLoader(self.val_dataset, batch_size=self.batch_size,\
-                                            shuffle=False, num_workers=8, pin_memory=True)#, sampler=val_sampler)
+                                            shuffle=False, num_workers=8, pin_memory=True)
 
     def train(self):
         self.best_loss = float("inf")
@@ -198,7 +179,7 @@ class RS_Agent:
             loss.backward()
             self.optimizer.step()
 
-            total_loss += loss.item() #/ (self.num_joints * 3 * 4)
+            total_loss += loss.item()
             total_loss_rot += loss_rot.item()
             total_loss_tr += loss_tr.item()
 
@@ -260,7 +241,7 @@ class RS_Agent:
                 loss_rot, loss_tr = self.criterion(Y, Y_hat)
                 loss = loss_tr + loss_rot
 
-                total_loss += loss.item() #/ (self.num_joints * 3 * 4)
+                total_loss += loss.item()
                 total_loss_rot += loss_rot.item()
                 total_loss_tr += loss_tr.item()
 
@@ -362,57 +343,9 @@ class RS_Agent:
     def build_loss_function(self):
         return Holden_loss(self.user_weights_t, self.user_weights_rot)
 
-    def save_model(self, epoch):
-        ckpt = {'model': self.model.state_dict(),
-                'optimizer':self.optimizer.state_dict(),
-                'best_loss': self.best_loss,
-                "epoch": epoch}
-        torch.save(ckpt, self.checkpoint_dir)
-
-    def load_model(self):
-        ckpt = torch.load(self.checkpoint_dir)
-        self.model.load_state_dict(ckpt['model'])
-        if not self.is_test:
-            self.optimizer.load_state_dict(ckpt['optimizer'])
-            self.best_loss = ckpt['best_loss']
-
-        return ckpt['epoch']
-
-    def write_summary(self, summary_writer, losses, ang_diff, tr_diff, epoch):
-        total_loss, total_loss_rot, total_loss_tr = losses
-        summary_writer.add_scalar('Loss', total_loss, epoch)
-        summary_writer.add_scalar('Rotation Loss', total_loss_rot, epoch)
-        summary_writer.add_scalar('Translation Loss', total_loss_tr, epoch)
-        for i in range(self.num_joints):
-            summary_writer.add_scalar(f'joint_{i+1}: avg angle diff', ang_diff[i], epoch)
-            summary_writer.add_scalar(f'joint_{i+1}: avg translation diff', tr_diff[i], epoch)
-        summary_writer.add_scalar('Rotational Error (deg)', torch.mean(ang_diff), epoch)
-        summary_writer.add_scalar('Translation Error (mm)', torch.mean(tr_diff), epoch)
-
     def default_cfg(self):
         return {
             "use_svd": self.cfg.model.baseline.use_svd,
             "lr": self.cfg.optimizer.AmsGrad.lr,
             "decay": self.cfg.lr_scheduler.ExponentialLR.decay
         }
-
-    def wandb_summary(self, training, losses, ang_diff, tr_diff, epoch):
-        total_loss, total_loss_rot, total_loss_tr = losses
-        if not training:
-            wandb.log({'Validation Loss': total_loss, 'Epoch': epoch})
-            wandb.log({'Validation Rotation Loss': total_loss_rot, 'Epoch': epoch})
-            wandb.log({'Validation Translation Loss': total_loss_tr, 'Epoch': epoch})
-            for i in range(self.num_joints):
-                wandb.log({f'Validation joint_{i+1}: Avg rotation error': ang_diff[i], 'Epoch': epoch})
-                wandb.log({f'Validation joint_{i+1}: Avg translation error': tr_diff[i], 'Epoch': epoch})
-            wandb.log({'Validation Rotation Error (deg)': torch.mean(ang_diff), 'Epoch': epoch})
-            wandb.log({'Validation Translation Error (mm)': torch.mean(tr_diff), 'Epoch': epoch})
-        else:
-            wandb.log({'Training Loss': total_loss, 'Epoch': epoch})
-            wandb.log({'Training Rotation Loss': total_loss_rot, 'Epoch': epoch})
-            wandb.log({'Training Translation Loss': total_loss_tr, 'Epoch': epoch})
-            for i in range(self.num_joints):
-                wandb.log({f'Training joint_{i+1}: Avg rotation error': ang_diff[i], 'Epoch': epoch})
-                wandb.log({f'Training joint_{i+1}: Avg translation error': tr_diff[i], 'Epoch': epoch})
-            wandb.log({'Training Rotation Error (deg)': torch.mean(ang_diff), 'Epoch': epoch})
-            wandb.log({'Training Translation Error (mm)': torch.mean(tr_diff), 'Epoch': epoch})
