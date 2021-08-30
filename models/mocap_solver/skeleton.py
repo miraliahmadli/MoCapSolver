@@ -298,6 +298,22 @@ def find_neighbor_joint(fa, threshold):
     return neighbor_list
 """
 
+def get_topology(fname, num_joints):
+    '''
+    in each line we parent and its children
+        e.g: 0 1 2 3
+        0 is parent, 1,2,3 are its children
+    '''
+    joint_topology = [-1] * num_joints
+    with open(fname) as f:
+        lines = f.readlines()
+        for l in lines:
+            lst = list(map(int, l.strip().split()))
+            parent = lst[0]
+            for j in lst[1:]:
+                joint_topology[j] = parent
+    return joint_topology
+
 def build_edge_topology(topology, offset):
     # get all edges (pa, child, offset)
     edges = []

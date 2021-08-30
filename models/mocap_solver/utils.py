@@ -57,7 +57,6 @@ class MSBlock(nn.Module):
         return out
 
 
-# TODO: Implement loss functions, FK, and LBS
 '''
     X_c: marker configuration, local offset from each marker to each joint
         dim: (m, j, 3)
@@ -71,6 +70,13 @@ class MSBlock(nn.Module):
 '''
 def FK(X_m, X_t):
     pass
+
+
+def LBS(w, Y_c, Y_t):
+    X = (Y_t.unsqueeze(0) + Y_c)*w # m x j x 3
+    idx = torch.argmax(abs(X), -2, keepdim=True)
+    X = X.gather(1, idx.view(-1, 1, 3))
+    return X
 
 
 class Motion_loss(nn.Module):
@@ -138,5 +144,5 @@ class MS_loss(nn.Module):
         loss_t = self.crit_t(Y_t, X_t)
         loss_m = self.crit_m(Y_m, X_m)
 
-        loss = loss_marker + loss_c + loss_t + loss_m
+        loss = self.a1 * loss_marker + self.a2 * loss_c + self.a3 * loss_t + self.a4 * loss_m
         return loss

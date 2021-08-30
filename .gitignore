@@ -131,6 +131,7 @@ dmypy.json
 .pyre/
 
 *.npy
+*.npz
 *.amc
 *.asf
 *.c3d
