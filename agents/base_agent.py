@@ -5,9 +5,10 @@ from abc import ABC, abstractmethod
 
 
 class BaseAgent(ABC):
-    def __init__(self, cfg, test=False):
+    def __init__(self, cfg, test=False, sweep=False):
         self.cfg = cfg
         self.is_test = test
+        self.is_sweep = sweep
         self.checkpoint_dir = cfg.model_dir
 
         self.num_markers = cfg.num_markers
@@ -33,7 +34,59 @@ class BaseAgent(ABC):
         pass
 
     def train(self):
-        pass
+        self.best_loss = float("inf")
+        val_loss_f = []
+        train_loss_f = []
+
+        wandb.init(config=self.default_cfg(), project=self.cfg.project, entity=self.cfg.entity)
+        if self.is_sweep:
+            sweep_config = wandb.config
+            model_used = self.cfg.model.used.lower()
+            optimizer_used = self.cfg.optimizer.used.lower()
+            scheduler_used = self.cfg.lr_scheduler.used
+            if model_used == "baseline":
+                self.cfg.model.baseline.use_svd = sweep_config.use_svd
+            if optimizer_used == "amsgrad":
+                self.cfg.optimizer.AmsGrad.lr = sweep_config.lr
+            if scheduler_used == "ExponentialLR":
+                self.cfg.lr_scheduler.ExponentialLR.decay = sweep_config.decay
+
+        self.build_model()
+        self.criterion = self.build_loss_function()
+        self.optimizer = self.build_optimizer()
+
+        self.load_data()
+
+        last_epoch = 0
+        if os.path.exists(self.checkpoint_dir):
+            last_epoch = self.load_model()
+
+        self.scheduler = self.lr_scheduler(last_epoch)
+
+        epochs = self.cfg.epochs
+        self.train_writer = SummaryWriter(self.cfg.train_sum, "Train")
+        self.val_writer = SummaryWriter(self.cfg.val_sum, "Val")
+
+        for epoch in range(last_epoch + 1, epochs + 1):            
+            _, msg = self.train_per_epoch(epoch)
+            train_loss_f.append(msg)
+            loss, msg = self.val_per_epoch(epoch)
+            val_loss_f.append(msg)
+            if loss < self.best_loss:
+                self.best_loss = loss
+                self.save_model(epoch)
+
+            self.scheduler.step()
+
+        with open(self.cfg.logs_dir + "train_loss.txt", "w+") as f:
+            for msg in train_loss_f:
+                f.write(msg + "\n")
+        with open(self.cfg.logs_dir + "val_loss.txt", "w+") as f:
+            for msg in val_loss_f:
+                f.write(msg + "\n")
+
+        self.train_writer.close()
+        self.val_writer.close()
 
     def run_batch(self):
         pass
