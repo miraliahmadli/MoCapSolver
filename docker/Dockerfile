@@ -4,6 +4,7 @@ ENV DEBIAN_FRONTEND noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
 		ca-certificates git wget vim cmake ninja-build protobuf-compiler \
 		libprotobuf-dev build-essential cmake curl ca-certificates screen \
+        freeglut3-dev xvfb\
   	&& rm -rf /var/lib/apt/lists/*
 
 WORKDIR /opt
@@ -24,7 +25,6 @@ RUN python -m pip install wandb
 RUN git clone https://github.com/beyaldiz/fairmotion.git \
     && cd fairmotion \
     && python -m pip install -e .
-
 
 #Port for Jupyter, Tensorboard
 EXPOSE 8888
