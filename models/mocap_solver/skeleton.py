@@ -1,3 +1,9 @@
+# Copyright (c) 2020, Kfir Aberman, Peizhuo Li, Yijia Weng, Dani Lischinski, Olga Sorkine-Hornung, Daniel Cohen-Or and Baoquan Chen.
+# All rights reserved.
+# 
+# This source code is licensed under the BSD-style license 
+# https://github.com/DeepMotionEditing/deep-motion-editing/blob/master/license.txt
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

@@ -69,6 +69,9 @@ class StaticDecoder(nn.Module):
         out = self.decoder(input)
         return out
 
+    def freeze_params(self):
+        for param in self.decoder.parameters():
+            param.requires_grad = False
 
 # eoncoder for dynamic part, i.e. motion + offset part
 class DynamicEncoder(nn.Module):
@@ -192,6 +195,11 @@ class DynamicDecoder(nn.Module):
 
         return input
 
+    def freeze_params(self):
+        for layer in self.layers:
+            for param in layer.parameters():
+                param.requires_grad = False
+
 
 # eoncoder for dynamic part, i.e. motion + offset part
 class MarkerEncoder(nn.Module):
@@ -273,6 +281,11 @@ class MarkerDecoder(nn.Module):
             x = layer(x)
         return x
 
+    def freeze_params(self):
+        for layer in self.layers:
+            for param in layer.parameters():
+                param.requires_grad = False
+
 
 class Encoder(nn.Module):
     def __init__(self, edges, input_size, hidden_size, 
@@ -324,6 +337,11 @@ class Decoder(nn.Module):
         Y_c = self.marker_dec(l_c, offset_dec)
 
         return Y_c, Y_t, Y_m
+    
+    def freeze_params(self):
+        self.static_dec.freeze_params()
+        self.dynamic_dec.freeze_params()
+        self.marker_dec.freeze_params()
 
 
 def test_models():

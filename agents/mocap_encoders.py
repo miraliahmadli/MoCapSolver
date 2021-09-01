@@ -1,15 +1,13 @@
-import os
 import torch
 import torch.nn as nn
 
 from agents.base_agent import BaseAgent
-from models import AE, MocapSolver, MarkerReliability, MS_loss
-from models.mocap_solver import Decoder
+from models import AE, AE_loss, MarkerReliability
 from models.mocap_solver.skeleton import get_topology, build_edge_topology
-from datasets.mocap_solver import MS_Dataset
+from datasets.mocap_solver import AE_Dataset
 
 
-class MS_Agent(BaseAgent):
+class EncoderAgent(BaseAgent):
     def __init__(self, cfg, test=False, sweep=False):
         super(RS_Agent, self).__init__(cfg, test, sweep)
         self.joint_weights = cfg.joint_weights
@@ -22,22 +20,14 @@ class MS_Agent(BaseAgent):
         self.edges = build_edge_topology(self.joint_topology, torch.zeros((self.num_joints, 3)))
 
     def build_model(self):
-        self.auto_encoder = AE(self.edges, self.num_markers, self.num_joints, 1024, offset_dims=self.cfg.model.ae.offset_dims, 
+        self.nodel = AE(edges, self.num_markers, self.num_joints, 1024, offset_dims=self.cfg.model.ae.offset_dims, 
                                 offset_channels=[1, 8], offset_joint_num=[self.num_joints, 7])
-        self.model = MocapSolver(self.num_markers, self.cfg.window_size, 1024,
-                                use_motion=True, use_marker_conf=True, use_skeleton=True)
-        self.ms_decoder = self.auto_encoder.decoder
-        if os.path.exists(self.cfg.model.decoder_dir):
-            self.load_decoder(self.cfg.model.decoder_dir)
-        else:
-            print("No pretrained encoder")
-            exit()
         self.f_mr = MarkerReliability(self.num_markers, 8)
 
     def load_data(self):
-        self.train_dataset = MS_Dataset(csv_file=self.cfg.datadir , file_stems=self.cfg.train_filenames, lrf_mean_markers_file=self.cfg.lrf_mean_markers,
+        self.train_dataset = AE_Dataset(csv_file=self.cfg.datadir , file_stems=self.cfg.train_filenames, lrf_mean_markers_file=self.cfg.lrf_mean_markers,\
                                 num_marker=self.num_markers, num_joint=self.num_joints)
-        self.val_dataset = MS_Dataset(csv_file=self.cfg.datadir , file_stems=self.cfg.val_filenames, lrf_mean_markers_file=self.cfg.lrf_mean_markers,
+        self.val_dataset = AE_Dataset(csv_file=self.cfg.datadir , file_stems=self.cfg.val_filenames, lrf_mean_markers_file=self.cfg.lrf_mean_markers,\
                                 num_marker=self.num_markers, num_joint=self.num_joints)
 
         self.train_steps = len(self.train_dataset) // self.batch_size
@@ -51,12 +41,10 @@ class MS_Agent(BaseAgent):
     def train(self):
         pass
 
-    def run_batch(self, X, Y, Y_c, Y_t, Y_m):
-        l_c, l_t, l_m = self.model(X)
-        l_m = l_m.view(l_m.shape[0], 16, -1)
-        Y_hat_c, Y_hat_t, Y_hat_m = self.ms_decoder(l_c, l_t, l_m)
+    def run_batch(self, X_c, X_t, X_m, Y_c, Y_t, Y_m):
+        l_c, l_t, l_m, Y_hat_c, Y_hat_t, Y_hat_m = self.nodel(X_c, X_t, X_m)
 
-        loss = self.criterion((Y, Y_c, Y_t, Y_m), (X, Y_hat_c, Y_hat_t, Y_hat_m))
+        loss = self.criterion((Y_c, Y_t, Y_m), (Y_hat_c, Y_hat_t, Y_hat_m))
         return loss
 
     def train_one_epoch(self, epoch):
@@ -69,12 +57,26 @@ class MS_Agent(BaseAgent):
         pass
 
     def build_loss_function(self):
-        return MS_loss(self.joint_weights, self.alphas)
+        return AE_loss(self.joint_weights, self.betas, self.skinning_w)
 
-    def load_decoder(self, decoder_dir):
-        ckpt = torch.load(decoder_dir)
-        self.ms_decoder.load_state_dict(ckpt['decoder'])
-        self.ms_decoder.freeze_params() # freeze params to avoid backprop
+    def save_model(self, epoch):
+        ckpt = {'encoder': self.nodel.encoder.state_dict(),
+                'decoder': self.nodel.decoder.state_dict(),
+                'optimizer':self.optimizer.state_dict(),
+                'best_loss': self.best_loss,
+                "epoch": epoch}
+        torch.save(ckpt, self.checkpoint_dir)
+
+    def load_model(self):
+        ckpt = torch.load(self.checkpoint_dir)
+        self.nodel.encoder.load_state_dict(ckpt["encoder"])
+        self.nodel.decoder.load_state_dict(ckpt['decoder'])
+
+        if not self.is_test:
+            self.optimizer.load_state_dict(ckpt['optimizer'])
+            self.best_loss = ckpt['best_loss']
+
+        return ckpt['epoch']
 
     def load_normalizer(self, ckpt_dir):
         ckpt = torch.load(ckpt_dir)
