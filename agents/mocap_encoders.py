@@ -11,6 +11,7 @@ class EncoderAgent(BaseAgent):
     def __init__(self, cfg, test=False, sweep=False):
         super(RS_Agent, self).__init__(cfg, test, sweep)
         self.joint_weights = cfg.joint_weights
+        self.marker_weights = cfg.marker_weights
         self.skinning_w = cfg.weight_assignment
 
         self.betas = cfg.loss.autoencoder.betas
@@ -57,7 +58,7 @@ class EncoderAgent(BaseAgent):
         pass
 
     def build_loss_function(self):
-        return AE_loss(self.joint_weights, self.betas, self.skinning_w)
+        return AE_loss(self.marker_weights , self.joint_weights, self.betas, self.skinning_w)
 
     def save_model(self, epoch):
         ckpt = {'encoder': self.nodel.encoder.state_dict(),

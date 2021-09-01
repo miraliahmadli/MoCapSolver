@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 
 from models.loss import weighted_L1_loss
+from models.mocap_solver.kinematics import ForwardKinematics
 from tools.utils import LBS
 
 
@@ -68,40 +69,43 @@ class MSBlock(nn.Module):
         rotations are defined by quaternions
         dim: (Jx4 + 3)
 '''
-def FK(X_m, X_t):
-    pass
-
-
 def LBS(w, Y_c, Y_t):
     X = (Y_t.unsqueeze(0) + Y_c)*w # m x j x 3
-    idx = torch.argmax(abs(X), -2, keepdim=True)
-    X = X.gather(1, idx.view(-1, 1, 3))
+    X = X.mean(axis=1) # m x 3
     return X
 
 
 class Motion_loss(nn.Module):
-    def __init__(self, joint_weights, b1, b2):
+    def __init__(self, joint_topology, edges, joint_weights, b1, b2):
         super(Motion_loss, self).__init__()
         self.b1 = b1
         self.b2 = b2
-        self.l1_crit = weighted_L1_loss(joint_weights, mode="mean")
+        self.fk = ForwardKinematics(joint_topology, edges)
+        self.rot_crit = weighted_L1_loss(joint_weights, mode="mean")
         self.fk_crit = weighted_L1_loss(joint_weights, mode="mean")
 
     def forward(self, Y_m, X_m, Y_t, X_t):
-        loss_m = self.b1 * self.l1_crit(Y_m, X_m)
-        loss_fk = self.b2 * self.fk_crit(FK(Y_m, Y_t), FK(X_m, X_t))
-        loss = loss_m + loss_fk
+        rotation_x, position_x, _ = self.fk.process_raw_repr(X_m, quater=True)
+        rotation_y, position_y, _ = self.fk.process_raw_repr(Y_m, quater=True)
+        rotation_x = rotation_x.permute(0, 3, 1, 2)
+        rotation_y = rotation_y.permute(0, 3, 1, 2)
+
+        loss_rot = self.b1 * self.rot_crit(rotation_y, rotation_x)
+        loss_fk = self.b2 * self.fk_crit(self.fk.forward_from_raw(Y_m, Y_t), 
+                                         self.fk.forward_from_raw(X_m, X_t))
+        loss_pos = torch.abs(position_x - position_y).mean()
+        loss = loss_rot + loss_fk + loss_pos
         return loss
 
 
 class Offset_loss(nn.Module):
-    def __init__(self, joint_weights, b3, b4, weights):
+    def __init__(self, marker_weights, joint_weights, b3, b4, weights):
         super(Motion_loss, self).__init__()
         self.b1 = b1
         self.b2 = b2
         self.w = weights
         self.l1_crit = weighted_L1_loss(joint_weights, mode="mean")
-        self.lbs_crit = weighted_L1_loss(joint_weights, mode="mean")
+        self.lbs_crit = weighted_L1_loss(marker_weights, mode="mean")
 
     def forward(self, Y_c, X_c, Y_t, X_t):
         loss_c = self.b3 * self.l1_crit(Y_c, X_c)
@@ -111,11 +115,11 @@ class Offset_loss(nn.Module):
 
 
 class AE_loss(nn.Module):
-    def __init__(self, joint_weights, betas, weight_assignment):
+    def __init__(self, marker_weights, joint_weights, betas, weight_assignment):
         super(AE_loss, self).__init__()
         b1, b2, b3, b4 = betas
-        self.crit_c = Offset_loss(joint_weights, b3, b4, weight_assignment)
-        self.crit_t = weighted_L1_loss(joint_weights)
+        self.crit_c = Offset_loss(marker_weights, joint_weights, b3, b4, weight_assignment)
+        self.crit_t = weighted_L1_loss(joint_weights, mode="mean")
         self.crit_m = Motion_loss(joint_weights, b1, b2)
 
     def forward(self, Y, X):
