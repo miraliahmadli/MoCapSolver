@@ -73,6 +73,7 @@ class StaticDecoder(nn.Module):
         for param in self.decoder.parameters():
             param.requires_grad = False
 
+
 # eoncoder for dynamic part, i.e. motion + offset part
 class DynamicEncoder(nn.Module):
     def __init__(self, edges, num_layers=2, skeleton_dist=1,

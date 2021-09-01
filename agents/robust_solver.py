@@ -1,4 +1,5 @@
 import os
+import wandb
 import numpy as np
 from tqdm import tqdm
 
@@ -7,10 +8,9 @@ import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
 from torch.optim.lr_scheduler import MultiStepLR, ExponentialLR
-import wandb
 
 from agents.base_agent import BaseAgent
-from models import Baseline, LS_solver, Holden_loss
+from models import Baseline, LS_solver, RS_loss
 from datasets.robust_solver import RS_Dataset, RS_Test_Dataset
 
 from tools.utils import LBS, corrupt, preweighted_Z, xform_to_mat44, symmetric_orthogonalization
@@ -284,7 +284,7 @@ class RS_Agent(BaseAgent):
                                     weight_decay=self.cfg.optimizer.AmsGrad.weight_decay, amsgrad=True)
 
     def build_loss_function(self):
-        return Holden_loss(self.user_weights_t, self.user_weights_rot)
+        return RS_loss(self.user_weights_t, self.user_weights_rot)
 
     def default_cfg(self):
         return {

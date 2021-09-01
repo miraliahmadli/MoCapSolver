@@ -1,7 +1,7 @@
-import torch
-import wandb
-import torch.nn as nn
 from abc import ABC, abstractmethod
+import wandb
+import torch
+import torch.nn as nn
 
 
 class BaseAgent(ABC):

@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-
 from models.mocap_solver.utils import ResidualBlock, DenseBlock
 
 

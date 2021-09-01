@@ -2,19 +2,7 @@ import torch
 import torch.nn as nn
 
 from tools.utils import symmetric_orthogonalization
-
-
-class ResNetBlock(nn.Module):
-    def __init__(self, hidden_size: int):
-        super(ResNetBlock, self).__init__()
-        self.linear = nn.Linear(hidden_size, hidden_size)
-        self.relu = nn.ReLU()
-
-    def forward(self, x):
-        out = self.linear(x)
-        out += x
-        out = self.relu(out)
-        return out
+from models.robust_solver.utils import ResidualBlock
 
 
 class Baseline(nn.Module):
@@ -33,7 +21,7 @@ class Baseline(nn.Module):
 
         self.resnet_block = torch.nn.Sequential()
         for i in range(num_skip_layers):
-            self.resnet_block.add_module(f"skip_{i}", ResNetBlock(hidden_size))
+            self.resnet_block.add_module(f"skip_{i}", ResidualBlock(hidden_size))
 
         self.relu = nn.ReLU()
         self.last_layer = nn.Linear(hidden_size, self.output_size)

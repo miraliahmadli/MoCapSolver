@@ -1,9 +1,7 @@
+import numpy as np
 import torch
 import torch.nn as nn
-import numpy as np
 
-import sys, os
-sys.path.append(".")
 from tools.preprocess import weight_assign
 from tools.utils import svd_rot as svd_solver
 
