@@ -3,7 +3,7 @@ import torch.nn as nn
 
 from models.loss import weighted_L1_loss
 from models.mocap_solver.kinematics import ForwardKinematics
-from tools.utils import LBS
+from tools.transform import quaternion_to_matrix
 
 
 class ResidualBlock(nn.Module):
@@ -69,6 +69,36 @@ class MSBlock(nn.Module):
         rotations are defined by quaternions
         dim: (Jx4 + 3)
 '''
+def split_raw_motion(raw_motion):
+    # raw: bs x (J * 4 + 3) x T
+    position = raw[:, -3:, :] # bs x 3 x T
+    position = position.permute(0, 2, 1) # bs x T x 3
+
+    rotation = raw[:, :-3, :] # bs x (J * 4) x T
+    rotation = rotation.view((rotation.shape[0], -1, 4, rotation.shape[-1])) # bs x J x 4 x T
+    rotation = rotation.permute(0, 3, 1, 2) # bs x T x J x 4
+
+    return rotation, position
+
+
+def FK(topology, rotation, position, offset, world=True):
+    result = torch.empty(rotation.shape[:-1] + (3, ), device=position.device) # bs x T x J x 3
+    transform = quaternion_to_matrix(rotation) # bs x T x J x 3 x 3
+
+    offset = offset.reshape((-1, 1, offset.shape[-2], offset.shape[-1], 1)) # bs x 1 x J x 3 x 1
+
+    for i, pi in enumerate(topology):
+        if pi == -1:
+            assert i == 0
+            result[..., i, :] = torch.matmul(transform[..., i, :, :], offset[..., i, :, :]).squeeze()
+            continue
+
+        transform[..., i, :, :] = torch.matmul(transform[..., pi, :, :], transform[..., i, :, :])
+        result[..., i, :] = torch.matmul(transform[..., i, :, :], offset[..., i, :, :]).squeeze()
+        if world: result[..., i, :] += result[..., pi, :]
+    return result
+
+
 def LBS(w, Y_c, Y_t):
     X = (Y_t.unsqueeze(0) + Y_c)*w # m x j x 3
     X = X.mean(axis=1) # m x 3
@@ -80,19 +110,17 @@ class Motion_loss(nn.Module):
         super(Motion_loss, self).__init__()
         self.b1 = b1
         self.b2 = b2
-        self.fk = ForwardKinematics(joint_topology, edges)
+        self.topology = joint_topology
         self.rot_crit = weighted_L1_loss(joint_weights, mode="mean")
         self.fk_crit = weighted_L1_loss(joint_weights, mode="mean")
 
     def forward(self, Y_m, X_m, Y_t, X_t):
-        rotation_x, position_x, _ = self.fk.process_raw_repr(X_m, quater=True)
-        rotation_y, position_y, _ = self.fk.process_raw_repr(Y_m, quater=True)
-        rotation_x = rotation_x.permute(0, 3, 1, 2)
-        rotation_y = rotation_y.permute(0, 3, 1, 2)
+        rotation_x, position_x = split_raw_motion(X_m)
+        rotation_y, position_y = split_raw_motion(Y_m)
 
         loss_rot = self.b1 * self.rot_crit(rotation_y, rotation_x)
-        loss_fk = self.b2 * self.fk_crit(self.fk.forward_from_raw(Y_m, Y_t), 
-                                         self.fk.forward_from_raw(X_m, X_t))
+        loss_fk = self.b2 * self.fk_crit(FK(self.topology, rotation_y, position_y, Y_t), 
+                                         FK(self.topology, rotation_x, position_x, X_t))
         loss_pos = torch.abs(position_x - position_y).mean()
         loss = loss_rot + loss_fk + loss_pos
         return loss
