@@ -1,4 +1,4 @@
-# Denoising
+# MoCap Data Denoising
 Marker-Based Motion Capture Data Denoising
 
 **All the scripts should be run from the main project directory!**
@@ -44,8 +44,13 @@ dataset/hierarchy.txt
 
 Use visualization function in tools/viz.py
 
+## Training Model
+
+1. Create `xxx.json` file and specify parameters
+2. Run ```python main.py --config [path to xxx.json]```
 
 ## Extras
 - [Fairmotion](https://github.com/facebookresearch/fairmotion)
 - [AMCParser](https://github.com/CalciferZh/AMCParser)
 - [ezc3d](https://github.com/pyomeca/ezc3d)
+- [DeepMotion](https://github.com/DeepMotionEditing/deep-motion-editing/tree/master/retargeting)
