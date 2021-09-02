@@ -42,10 +42,7 @@ dataset/hierarchy.txt
 
 ## Visualization
 ```
-python tools/viz/viz_bvh.py --bvh-files [space separated .bvh filenames]
-python tools/viz/viz_c3d.py --c3d-files [space seperated .c3d filenames]
-python tools/viz/viz_c3damc.py --c3d-files [space seperated .c3d filenames] --amc-files [space seperated .amc filenames]
-python tools/viz/viz_c3dbvh.py --c3d-files [space seperated .c3d filenames] --bvh-files [space seperated .bvh filenames]
+Use visualization in tools/viz/viz.py
 ```
 
 ## Extras

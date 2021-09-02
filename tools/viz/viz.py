@@ -17,8 +17,9 @@ from fairmotion.ops import conversions, math, motion as motion_ops
 from fairmotion.utils import utils
 
 viewer = None
-local_frame_markers = [4, 9, 23, 28, 39, 40]
-local_frame_joint = 11
+cam = None
+focus_markers = [4, 9, 23, 28, 39, 40]
+focus_joint = 11
 
 class MocapViewer(glut_viewer.Viewer):
     """
@@ -34,6 +35,7 @@ class MocapViewer(glut_viewer.Viewer):
         fname,
         fps_vid,
         res,
+        focus,
         play_speed=1.0,
         scale=0.1,
         thickness=1.0,
@@ -46,6 +48,7 @@ class MocapViewer(glut_viewer.Viewer):
         self.fname = fname
         self.fps_vid = fps_vid
         self.res = res
+        self.focus = focus
         self.play_speed = play_speed
         self.render_overlay = render_overlay
         self.hide_origin = hide_origin
@@ -88,6 +91,8 @@ class MocapViewer(glut_viewer.Viewer):
         pass
 
     def _render_pose(self, pose, adj, body_model, color):
+        if self.focus == "skel":
+            cam.origin = pose[focus_joint, :, 3].reshape((3, ))
         for j in range(pose.shape[0]):
             rot = pose[j, :, :3].reshape(3, 3)
             pos = pose[j, :, 3].reshape((3, )) 
@@ -128,6 +133,8 @@ class MocapViewer(glut_viewer.Viewer):
             self._render_pose(pose, motion['adj'], "stick_figure2", motion['color'])
     
     def _render_pose2(self, pose, body_model, color):
+        if self.focus == "marker":
+            cam.origin = np.mean(pose[focus_markers], axis=-2).reshape((3, ))
         for m in range(pose.shape[0]):
             pos = pose[m].reshape((3, 1))
             gl_render.render_point(pos, radius=0.4 * self.scale, color=np.array(color) / 255.0)
@@ -177,7 +184,7 @@ class MocapViewer(glut_viewer.Viewer):
 
 def visualize(Xs, Ys, colors_X=[[0, 0, 0, 255]], colors_Y=[[0, 255, 0, 255], [255, 0, 0, 255]],
               hierarchy_file="dataset/hierarchy.txt", export_fname="./test.mp4", res=(1280, 720),
-              fps_anim=120.0, fps_vid=60.0):
+              fps_anim=120.0, fps_vid=60.0, focus="skel"):
     """
     Visualize skeleton and/or markers and export as mp4
 
@@ -191,6 +198,7 @@ def visualize(Xs, Ys, colors_X=[[0, 0, 0, 255]], colors_Y=[[0, 255, 0, 255], [25
         res: Resolution of the video
         fps_anim: Fps of the animation
         fps_vid: Fps of the exported video
+        focus: "skel" for skeleton, "marker" for ref markers
 
     """
     X, Y = Xs, Ys
@@ -228,6 +236,7 @@ def visualize(Xs, Ys, colors_X=[[0, 0, 0, 255]], colors_Y=[[0, 255, 0, 255], [25
             'adj': adj,
             'color': colors_Y[i % len(colors_Y)]
         })
+    global cam
     cam = camera.Camera(
         pos=np.array(args.camera_position),
         origin=np.array(args.camera_origin),#xform[0, 0, :, 3]
@@ -241,6 +250,7 @@ def visualize(Xs, Ys, colors_X=[[0, 0, 0, 255]], colors_Y=[[0, 255, 0, 255], [25
         fname = export_fname,
         fps_vid = fps_vid,
         res = res,
+        focus = focus,
         render_overlay=args.render_overlay,
         hide_origin=args.hide_origin,
         title="Motion Graph Viewer",
@@ -278,14 +288,14 @@ if __name__ == "__main__":
         nargs="+",
         type=float,
         required=False,
-        default=(20.0, 17.0, 17.0),
+        default=(15.0, 15.0, 15.0),
     )
     parser.add_argument(
         "--camera-origin",
         nargs="+",
         type=float,
         required=False,
-        default=(0.0, 5.0, 7.0),
+        default=(0.0, 0.0, 0.0),
     )
     parser.add_argument("--hide-origin", action="store_true")
     parser.add_argument("--render-overlay", action="store_true")
