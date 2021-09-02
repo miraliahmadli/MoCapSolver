@@ -12,7 +12,7 @@ docker build -t mocap-env -f docker/Dockerfile .
 
 To run the docker image creating a container (this command connects the current directory to /host, all the other changes are removed)
 ```
-docker run --rm -it --runtime=nvidia --ipc=host -v $PWD:/host --network=host --name mocap-dev mocap-env /bin/sh -c 'cd /host; Xvfb :5 -screen 0 1920x1080x24; bash'
+docker run --rm -it --runtime=nvidia --ipc=host -v $PWD:/host --network=host --name mocap-dev mocap-env /bin/sh -c 'cd /host; Xvfb :5 -screen 0 1920x1080x24 & export DISPLAY=:5; bash'
 ```
 
 ## Dataset
@@ -41,12 +41,9 @@ dataset/hierarchy.txt
 - Tree structure of the skeleton for the joint order in the npy files
 
 ## Visualization
-```
-python tools/viz/viz_bvh.py --bvh-files [space separated .bvh filenames]
-python tools/viz/viz_c3d.py --c3d-files [space seperated .c3d filenames]
-python tools/viz/viz_c3damc.py --c3d-files [space seperated .c3d filenames] --amc-files [space seperated .amc filenames]
-python tools/viz/viz_c3dbvh.py --c3d-files [space seperated .c3d filenames] --bvh-files [space seperated .bvh filenames]
-```
+
+Use visualization function in tools/viz.py
+
 
 ## Extras
 - [Fairmotion](https://github.com/facebookresearch/fairmotion)
