@@ -12,7 +12,7 @@ docker build -t mocap-env -f docker/Dockerfile .
 
 To run the docker image creating a container (this command connects the current directory to /host, all the other changes are removed)
 ```
-docker run --rm -it --runtime=nvidia --ipc=host -v $PWD:/host --network=host --name mocap-dev mocap-env /bin/sh -c 'cd /host; Xvfb :5 -screen 0 1920x1080x24; bash'
+docker run --rm -it --runtime=nvidia --ipc=host -v $PWD:/host --network=host --name mocap-dev mocap-env /bin/sh -c 'cd /host; Xvfb :5 -screen 0 1920x1080x24 & export DISPLAY=:5; bash'
 ```
 
 ## Dataset
