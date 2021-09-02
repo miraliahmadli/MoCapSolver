@@ -42,7 +42,7 @@ dataset/hierarchy.txt
 
 ## Visualization
 ```
-Use visualization in tools/viz/viz.py
+Use visualization function in tools/viz.py
 ```
 
 ## Extras
