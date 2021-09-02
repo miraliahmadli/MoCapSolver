@@ -41,9 +41,9 @@ dataset/hierarchy.txt
 - Tree structure of the skeleton for the joint order in the npy files
 
 ## Visualization
-```
+
 Use visualization function in tools/viz.py
-```
+
 
 ## Extras
 - [Fairmotion](https://github.com/facebookresearch/fairmotion)
