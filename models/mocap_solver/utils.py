@@ -84,7 +84,6 @@ def split_raw_motion(raw_motion):
 def FK(topology, rotation, position, offset, world=True):
     result = torch.empty(rotation.shape[:-1] + (3, ), device=position.device) # bs x T x J x 3
     transform = quaternion_to_matrix(rotation) # bs x T x J x 3 x 3
-
     offset = offset.reshape((-1, 1, offset.shape[-2], offset.shape[-1], 1)) # bs x 1 x J x 3 x 1
 
     for i, pi in enumerate(topology):
@@ -177,4 +176,4 @@ class MS_loss(nn.Module):
         loss_m = self.crit_m(Y_m, X_m)
 
         loss = self.a1 * loss_marker + self.a2 * loss_c + self.a3 * loss_t + self.a4 * loss_m
-        return loss
+        return loss, loss_marker, loss_c, loss_t, loss_m
