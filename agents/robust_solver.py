@@ -5,9 +5,7 @@ from tqdm import tqdm
 
 import torch
 import torch.nn as nn
-from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
-from torch.optim.lr_scheduler import MultiStepLR, ExponentialLR
 
 from agents.base_agent import BaseAgent
 from models import Baseline, LS_solver, RS_loss
@@ -264,24 +262,6 @@ class RS_Agent(BaseAgent):
                 Y_ = Y_.cpu().detach().numpy()
                 np.save(f"asd.npy", Y_)
                 print("loss={0:.4f}".format(loss.item()))
-
-    def lr_scheduler(self, last_epoch):
-        scheduler = self.cfg.lr_scheduler.used
-        if scheduler == "ExponentialLR":
-            return ExponentialLR(optimizer=self.optimizer, gamma=self.cfg.lr_scheduler.ExponentialLR.decay)
-        elif scheduler == "MultiStepLR":
-            milestones = list(range(0, self.cfg.epochs, self.cfg.lr_scheduler.MultiStepLR.range))
-            return MultiStepLR(self.optimizer, milestones=milestones, gamma=0.1, last_epoch=last_epoch-1)
-
-    def build_optimizer(self):
-        optimizer = self.cfg.optimizer.used.lower()
-        if optimizer == "adam":
-            return torch.optim.Adam(self.model.parameters(), lr=self.cfg.optimizer.Adam.lr)
-        elif optimizer == "sgd":
-            return torch.optim.SGD(self.model.parameters(), lr=self.cfg.optimizer.SGD.lr)
-        elif optimizer == "amsgrad":
-            return torch.optim.Adam(self.model.parameters(), lr=self.cfg.optimizer.AmsGrad.lr,
-                                    weight_decay=self.cfg.optimizer.AmsGrad.weight_decay, amsgrad=True)
 
     def build_loss_function(self):
         return RS_loss(self.user_weights_t, self.user_weights_rot)

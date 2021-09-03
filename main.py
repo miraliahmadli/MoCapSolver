@@ -7,10 +7,15 @@ from easydict import EasyDict
 import wandb
 
 from agents.robust_solver import RS_Agent
+from agents.mocap_solver import MS_Agent
+from agents.mocap_encoders import EncoderAgent
+from agents.marker_reliability import MR_Agent
 
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
+    parser.add_argument('--model', type=str,
+                         default="RobustSolver", help="model to train")
     parser.add_argument('--mode', type=str,
                          default="train", help="training, testing or sweep")
     parser.add_argument('--config', type=str,
@@ -34,20 +39,29 @@ def read_cfg(cfg_file):
 def main():
     args = parse_arguments()
     cfg = read_cfg(args.config)
-    if args.mode == 'train':
-        agent = RS_Agent(cfg)
-        agent.train()
-    elif args.mode == "test":
-        agent = RS_Agent(cfg, True)
+    test = args.mode == "test"
+    sweep = args.mode == "sweep"
+    model = args.model
+    if model == "RobustSolver":
+        agent = RS_Agent(cfg, test, sweep)
+    elif model == "MocapSolver":
+        agent = MS_Agent(cfg, test, sweep)
+    elif model == "Autoencoder":
+        agent = EncoderAgent(cfg, test, sweep)
+    elif model == "Normalizer":
+        agent = MR_Agent(cfg, test, sweep)
+
+    if test:
         agent.test_one_animation()
-    elif args.mode == "sweep":
+    elif args.mode == 'train':
+        agent.train()
+    elif sweep:
         with open(args.sweep_config) as f:
             sweep_cfg = json.loads(f.read())
         sweep_id = wandb.sweep(sweep_cfg, project='denoising', entity='mocap')
         cfg.sweep_id = sweep_id
         agent = RS_Agent(cfg, sweep=True)
         wandb.agent(sweep_id, agent.train)
-
     else:
         raise NotImplementedError
 

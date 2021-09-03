@@ -1,6 +1,8 @@
 import os
+from tqdm import tqdm
 import torch
 import torch.nn as nn
+from torch.utils.data import DataLoader
 
 from agents.base_agent import BaseAgent
 from models import AE, MocapSolver, MarkerReliability, MS_loss
@@ -23,16 +25,16 @@ class MS_Agent(BaseAgent):
 
     def build_model(self):
         self.auto_encoder = AE(self.edges, self.num_markers, self.num_joints, 1024, offset_dims=self.cfg.model.ae.offset_dims, 
-                               offset_channels=[1, 8], offset_joint_num=[self.num_joints, 7])
+                               offset_channels=[1, 8], offset_joint_num=[self.num_joints, 7]).to(self.device)
         self.model = MocapSolver(self.num_markers, self.cfg.window_size, 1024,
-                                use_motion=True, use_marker_conf=True, use_skeleton=True)
-        self.ms_decoder = self.auto_encoder.decoder
+                                use_motion=True, use_marker_conf=True, use_skeleton=True).to(self.device)
+        self.ms_decoder = self.auto_encoder.decoder.to(self.device)
         if os.path.exists(self.cfg.model.decoder_dir):
             self.load_decoder(self.cfg.model.decoder_dir)
         else:
             print("No pretrained encoder")
             exit()
-        self.f_mr = MarkerReliability(self.num_markers, 8)
+        self.f_mr = MarkerReliability(self.num_markers, 8).to(self.device)
 
     def load_data(self):
         self.train_dataset = MS_Dataset(csv_file=self.cfg.datadir , file_stems=self.cfg.train_filenames,
@@ -67,7 +69,7 @@ class MS_Agent(BaseAgent):
         losses = self.criterion((Y, Y_c, Y_t, Y_m), (X, Y_hat_c, Y_hat_t, Y_hat_m))
         return losses # loss, loss_marker, loss_c, loss_t, loss_m
 
-    def train_one_epoch(self, epoch):
+    def train_per_epoch(self, epoch):
         tqdm_batch = tqdm(total=self.val_steps, dynamic_ncols=True) 
         total_loss = 0
         total_loss_c = 0
@@ -111,7 +113,7 @@ class MS_Agent(BaseAgent):
         # message = f"epoch: {epoch}, loss: {total_loss}"
         # return total_loss, message
 
-    def val_one_epoch(self, epoch):
+    def val_per_epoch(self, epoch):
         tqdm_batch = tqdm(total=self.val_steps, dynamic_ncols=True) 
         total_loss = 0
         n = 0

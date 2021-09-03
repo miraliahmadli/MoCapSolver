@@ -1,5 +1,7 @@
+from tqdm import tqdm
 import torch
 import torch.nn as nn
+from torch.utils.data import DataLoader
 
 from agents.base_agent import BaseAgent
 from models import AE, AE_loss
@@ -22,7 +24,7 @@ class EncoderAgent(BaseAgent):
 
     def build_model(self):
         self.nodel = AE(edges, self.num_markers, self.num_joints, 1024, offset_dims=self.cfg.model.ae.offset_dims, 
-                        offset_channels=[1, 8], offset_joint_num=[self.num_joints, 7])
+                        offset_channels=[1, 8], offset_joint_num=[self.num_joints, 7]).to(self.device)
 
     def load_data(self):
         self.train_dataset = AE_Dataset(csv_file=self.cfg.datadir , file_stems=self.cfg.train_filenames, 
