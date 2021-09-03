@@ -26,6 +26,8 @@ RUN git clone https://github.com/beyaldiz/fairmotion.git \
     && cd fairmotion \
     && python -m pip install -e .
 
+ENV PYTHONPATH "${PYTHONPATH}:/host"
+
 #Port for Jupyter, Tensorboard
 EXPOSE 8888
 EXPOSE 6006

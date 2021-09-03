@@ -1,8 +1,6 @@
 # MoCap Data Denoising
 Marker-Based Motion Capture Data Denoising
 
-**All the scripts should be run from the main project directory!**
-
 ## Docker
 
 To build docker image
