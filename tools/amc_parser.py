@@ -1,3 +1,5 @@
+# Copyright (c) 2018 Yuxiao Zhou
+
 import numpy as np
 import matplotlib.pyplot as plt
 from transforms3d.euler import euler2mat
