@@ -1,10 +1,13 @@
 {
+    "project": "denoising",
+    "entity": "mocap",
+    
     "joint_to_marker": "dataset/joint_to_marker_paper.txt",
     "csv_file": "dataset/meta_data.csv",
     "lrf_mean_markers": "dataset/LRF_mean_offsets.npy",
 
-    "train_filenames": "data/train_all.txt",
-    "val_filenames": "data/valid_all.txt",
+    "train_filenames": "data/train.txt",
+    "val_filenames": "data/valid.txt",
     "test_filenames": "data/test.txt",
 
     "logs_dir": "logs/all_sc2/",
@@ -22,8 +25,8 @@
     "user_weights_translation": [1.0, 1.0, 1.0, 1.0, 1.0, 0.25, 1.0, 1.0, 1.0, 1.0, 0.25, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.25, 0.25, 0.25, 0.25, 1.0, 1.0, 1.0, 0.25, 0.25, 0.25, 0.25],
 
     "sampler":{
-        "mean_fname": "dataset/z_stats/mu_z.npy",
-        "cholesky_fname": "dataset/z_stats/cholesky_z.npy"
+        "mean_fname": "dataset/z_stats/mu_z_last_af.npy",
+        "cholesky_fname": "dataset/z_stats/cholesky_z_last_af.npy"
     },
 
     "model":{

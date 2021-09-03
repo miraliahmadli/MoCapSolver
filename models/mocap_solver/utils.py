@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 
 from models.loss import weighted_L1_loss
-from models.mocap_solver.kinematics import ForwardKinematics
 from tools.transform import quaternion_to_matrix
 
 

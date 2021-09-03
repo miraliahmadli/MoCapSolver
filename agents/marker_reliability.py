@@ -1,5 +1,8 @@
+from tqdm import tqdm
+import wandb
 import torch
 import torch.nn as nn
+from torch.utils.data import DataLoader
 
 from agents.base_agent import BaseAgent
 from models import MarkerReliability
@@ -7,18 +10,16 @@ from datasets.marker_reliability import MR_Dataset
 
 
 class MR_Agent(BaseAgent):
-    def __init__(self, cfg, sweep=False):
+    def __init__(self, cfg, test=False, sweep=False):
         super(MR_Agent, self).__init__(cfg, False, False)
-        self.reference_markers = cfg.reference_markers
 
     def build_model(self):
-        self.model = MarkerReliability(self.num_markers, len(self.reference_markers))
+        self.model = MarkerReliability(self.num_markers, 8, hidden_size=self.cfg.model.hidden_size, 
+                                window_size=self.cfg.window_size, num_res_layers=self.cfg.model.num_layers).to(self.device)
 
     def load_data(self):
-        self.train_dataset = MR_Dataset(csv_file=self.cfg.csv_file , file_stems=self.cfg.train_filenames,
-                                        num_marker=self.num_markers, reference_markers=self.reference_markers)
-        self.val_dataset = MR_Dataset(csv_file=self.cfg.csv_file , file_stems=self.cfg.val_filenames,
-                                      num_marker=self.num_markers, reference_markers=self.reference_markers)
+        self.train_dataset = MR_Dataset(data_dir=self.cfg.train_filenames, window_size=self.cfg.window_size, threshold=self.cfg.threshold)
+        self.val_dataset = MR_Dataset(data_dir=self.cfg.val_filenames, window_size=self.cfg.window_size, threshold=self.cfg.threshold)
 
         self.train_steps = len(self.train_dataset) // self.batch_size
         self.val_steps = len(self.val_dataset) // self.batch_size
@@ -28,7 +29,7 @@ class MR_Agent(BaseAgent):
         self.val_data_loader = DataLoader(self.val_dataset, batch_size=self.batch_size,\
                                             shuffle=False, num_workers=8, pin_memory=True)
 
-    def train_one_epoch(self, epoch):
+    def train_per_epoch(self, epoch):
         tqdm_batch = tqdm(total=self.train_steps, dynamic_ncols=True) 
         total_loss = 0
         n = 0
@@ -62,7 +63,7 @@ class MR_Agent(BaseAgent):
         message = f"epoch: {epoch}, loss: {total_loss}"
         return total_loss, message
 
-    def val_one_epoch(self):
+    def val_per_epoch(self, epoch):
         tqdm_batch = tqdm(total=self.val_steps, dynamic_ncols=True) 
         total_loss = 0
         n = 0
@@ -94,7 +95,7 @@ class MR_Agent(BaseAgent):
         return total_loss, message
 
     def build_loss_function(self):
-        return nn.CrossEntropyLoss()
+        return nn.BCELoss(reduction="sum")
 
     def write_summary(self, summary_writer, total_loss, epoch):
         summary_writer.add_scalar('Loss', total_loss, epoch)

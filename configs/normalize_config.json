@@ -1,0 +1,65 @@
+{
+    "project": "denoising",
+    "entity": "mocap",
+
+    "train_filenames": "data/synthetic_train_all.txt",
+    "val_filenames": "data/synthetic_val_all.txt",
+    "test_filenames": "data/synthetic_test.txt",
+
+    "logs_dir": "logs/normalize/",
+    "model_dir": "logs/normalize/model.pth",
+    "train_sum": "logs/normalize/tensorboard/train",
+    "val_sum": "logs/normalize/tensorboard/val",
+
+    "use_gpu": true,
+    "gpu_idx": 0,
+    "epochs": 70,
+    "batch_size": 512,
+    "window_size": 64,
+    "threshold": 0.8,
+    "num_markers": 56,
+    "num_joints": 24,
+
+    "model":{
+        "hidden_size":1024,
+        "num_layers": 4
+    },
+
+    "training_settings":{
+        "train_set": {
+            "sample": true,
+            "corrupt": true
+        },
+        "val_set": {
+            "sample": false,
+            "corrupt": true
+        }
+    },
+
+    "optimizer":{
+        "available": ["SGD", "Adam", "AmsGrad"],
+        "used": "SGD",
+        "SGD": {
+            "lr": 0.001,
+            "weight_decay": 0.01
+        },
+        "Adam": {
+            "lr": 0.001
+        },
+        "AmsGrad": {
+            "lr": 1e-4,
+            "weight_decay": 0.01
+        }
+    },
+
+    "lr_scheduler": {
+        "available": ["ExponentialLR", "MultiStepLR"],
+        "used": "ExponentialLR",
+        "ExponentialLR":{
+            "decay": 0.96
+        },
+        "MultiStepLR":{
+            "range": 12
+        }
+    }
+}

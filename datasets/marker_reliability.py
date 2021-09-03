@@ -18,8 +18,9 @@ def read_file(fname):
 
 
 class MR_Dataset(Dataset):
-    def __init__(self, data_dir, window_size=64):
+    def __init__(self, data_dir, window_size=64, threshold=0.8):
         self.window_size = window_size
+        self.thr = threshold
         if isinstance(data_dir, list):
             fnames = data_dir
         else:
@@ -40,8 +41,9 @@ class MR_Dataset(Dataset):
 
     def get_gt_scores(self, raw, clean):
         distance = torch.norm(raw - clean, 2, dim=-1)
-        print(distance.shape)
-        return torch.maximum(torch.tensor(0), torch.minimum(torch.tensor(1), 1.2 - 0.004*distance))
+        rel_score = torch.maximum(torch.tensor(0), torch.minimum(torch.tensor(1), 1.2 - 0.004*distance))
+        rel_score = (rel_score >= self.thr).to(torch.float32)
+        return rel_score
 
     def __len__(self):
         return len(self.indices)
