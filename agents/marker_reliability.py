@@ -47,11 +47,11 @@ class MR_Agent(BaseAgent):
             loss.backward()
             self.optimizer.step()
 
-            tqdm_update = "Epoch={0:04d},loss={1:.4f}".format(epoch, loss.item() / bs)
+            tqdm_update = "Epoch={0:04d},loss={1:.4f}".format(epoch, loss.item() / (bs * self.cfg.window_size))
             tqdm_batch.set_postfix_str(tqdm_update)
             tqdm_batch.update()
 
-        total_loss /= n
+        total_loss /= (n * self.cfg.window_size)
         self.write_summary(self.train_writer, total_loss, epoch)
         self.wandb_summary(True, total_loss, epoch)
 
@@ -78,11 +78,11 @@ class MR_Agent(BaseAgent):
                 loss = self.criterion(pred_rel_scores, rel_scores)
                 total_loss += loss.item()
 
-                tqdm_update = "Epoch={0:04d},loss={1:.4f}".format(epoch, loss.item() / bs)
+                tqdm_update = "Epoch={0:04d},loss={1:.4f}".format(epoch, loss.item() / (bs * self.cfg.window_size))
                 tqdm_batch.set_postfix_str(tqdm_update)
                 tqdm_batch.update()
 
-        total_loss /= n
+        total_loss /= (n * self.cfg.window_size)
         self.write_summary(self.val_writer, total_loss, epoch)
         self.wandb_summary(False, total_loss, epoch)
 

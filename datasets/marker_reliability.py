@@ -6,7 +6,7 @@ import multiprocess
 import torch
 from torch.utils.data import Dataset
 
-local_frame_markers = [0, 1, 2, 3, 4, 5, 6, 7]
+local_frame_markers = [3, 7, 11, 21, 32, 36, 46, 54]
 
 def read_file(fname):
     data = np.load(fname)
@@ -41,7 +41,7 @@ class MR_Dataset(Dataset):
 
     def get_gt_scores(self, raw, clean):
         distance = torch.norm(raw - clean, 2, dim=-1)
-        rel_score = torch.maximum(torch.tensor(0), torch.minimum(torch.tensor(1), 1.2 - 0.004*distance))
+        rel_score = torch.maximum(torch.tensor(0), torch.minimum(torch.tensor(1), 1.2 - 0.4*distance))
         rel_score = (rel_score >= self.thr).to(torch.float32)
         return rel_score
 
@@ -73,7 +73,10 @@ def test():
     raw, gt = next(iter(data_loader)) 
     print(raw.shape)
     print(gt.shape)
+    print(gt[0, 10:15])
+    print(gt[gt == 0])
+    print(raw[0, 10:15, local_frame_markers])
 
 
-# if __name__ == "__main__":
-#     test()
+if __name__ == "__main__":
+    test()
