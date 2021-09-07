@@ -48,15 +48,13 @@ class EncoderAgent(BaseAgent):
         n = 0
 
         self.model.train()
-        for batch_idx, (X_c, X_t, X_m, Y_c, Y_t, Y_m) in enumerate(self.train_data_loader):
+        for batch_idx, (X_c, X_t, X_m) in enumerate(self.train_data_loader):
             bs = X_c.shape[0]
             n += bs
             X_c, X_t, X_m = X_c.to(torch.float32).to(self.device), X_t.to(torch.float32).to(self.device),  X_m.to(torch.float32).to(self.device)
-            Y_c, Y_t, Y_m = Y_c.to(torch.float32).to(self.device), Y_t.to(torch.float32).to(self.device),  Y_m.to(torch.float32).to(self.device)
 
             _, _, _, Y_hat_c, Y_hat_t, Y_hat_m = self.nodel(X_c, X_t, X_m)
-
-            loss_t, loss_m, loss_c = self.criterion((Y_c, Y_t, Y_m), (Y_hat_c, Y_hat_t, Y_hat_m))
+            loss_t, loss_m, loss_c = self.criterion((X_c, X_t, X_m), (Y_hat_c, Y_hat_t, Y_hat_m))
             total_loss_c += loss_c.item()
             total_loss_t += loss_t.item()
             total_loss_m += loss_m.item()
@@ -94,15 +92,13 @@ class EncoderAgent(BaseAgent):
 
         self.model.eval()
         with torch.no_grad():
-            for batch_idx, (X_c, X_t, X_m, Y_c, Y_t, Y_m) in enumerate(self.val_data_loader):
+            for batch_idx, (X_c, X_t, X_m) in enumerate(self.val_data_loader):
                 bs = X_c.shape[0]
                 n += bs
                 X_c, X_t, X_m = X_c.to(torch.float32).to(self.device), X_t.to(torch.float32).to(self.device),  X_m.to(torch.float32).to(self.device)
-                Y_c, Y_t, Y_m = Y_c.to(torch.float32).to(self.device), Y_t.to(torch.float32).to(self.device),  Y_m.to(torch.float32).to(self.device)
 
                 _, _, _, Y_hat_c, Y_hat_t, Y_hat_m = self.nodel(X_c, X_t, X_m)
-
-                loss_t, loss_m, loss_c = self.criterion((Y_c, Y_t, Y_m), (Y_hat_c, Y_hat_t, Y_hat_m))
+                loss_c, loss_t, loss_m = self.criterion((X_c, X_t, X_m), (Y_hat_c, Y_hat_t, Y_hat_m))
                 total_loss_c += loss_c.item()
                 total_loss_t += loss_t.item()
                 total_loss_m += loss_m.item()
@@ -124,9 +120,6 @@ class EncoderAgent(BaseAgent):
 
         # message = f"epoch: {epoch}, loss: {total_loss}"
         # return total_loss, message
-
-    def test_one_animation(self):
-        pass
 
     def build_loss_function(self):
         return AE_loss(self.marker_weights , self.joint_weights, self.betas, self.skinning_w)

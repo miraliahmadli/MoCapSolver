@@ -5,7 +5,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 
 from agents.base_agent import BaseAgent
-from models import AE, MocapSolver, MarkerReliability, MS_loss
+from models import AE, MocapSolver, MS_loss
 from models.mocap_solver import Decoder
 from models.mocap_solver.skeleton import get_topology, build_edge_topology
 from datasets.mocap_solver import MS_Dataset
@@ -34,7 +34,6 @@ class MS_Agent(BaseAgent):
         else:
             print("No pretrained encoder")
             exit()
-        self.f_mr = MarkerReliability(self.num_markers, 8).to(self.device)
 
     def load_data(self):
         self.train_dataset = MS_Dataset(csv_file=self.cfg.datadir , file_stems=self.cfg.train_filenames,
@@ -53,24 +52,21 @@ class MS_Agent(BaseAgent):
     def train(self):
         pass
 
-    def normalize(self, X):
-        P = self.f_mr(X)
-        if not (P < 0.8).any(): # reliable
-            pass
-        else:
-            pass
-
-    def run_batch(self, X, Y, Y_c, Y_t, Y_m):
-        X = self.normalize(X)
+    def run_batch(self, X):
         l_c, l_t, l_m = self.model(X)
         l_m = l_m.view(l_m.shape[0], 16, -1)
-        Y_hat_c, Y_hat_t, Y_hat_m = self.ms_decoder(l_c, l_t, l_m)
+        Y_c, Y_t, Y_m = self.ms_decoder(l_c, l_t, l_m)
 
-        losses = self.criterion((Y, Y_c, Y_t, Y_m), (X, Y_hat_c, Y_hat_t, Y_hat_m))
-        return losses # loss, loss_marker, loss_c, loss_t, loss_m
+        # TODO: apply skinning to get Y
+        # 1. quat to matrix
+        # 2. get affine matrix
+        # 3. LBS(w, Y, Y_c)
+        Y = None
+
+        return Y_c, Y_t, Y_m, Y
 
     def train_per_epoch(self, epoch):
-        tqdm_batch = tqdm(total=self.val_steps, dynamic_ncols=True) 
+        tqdm_batch = tqdm(total=self.train_steps, dynamic_ncols=True) 
         total_loss = 0
         total_loss_c = 0
         total_loss_t = 0
@@ -78,13 +74,15 @@ class MS_Agent(BaseAgent):
         n = 0
 
         self.model.train()
-        for batch_idx, (X, Y, Y_c, Y_t, Y_m) in enumerate(self.train_data_loader):
+        for batch_idx, (X_c, X_t, X_m, X) in enumerate(self.train_data_loader):
             bs = X_c.shape[0]
             n += bs
-            X, Y = X.to(torch.float32).to(self.device), Y.to(torch.float32).to(self.device)
-            Y_c, Y_t, Y_m = Y_c.to(torch.float32).to(self.device), Y_t.to(torch.float32).to(self.device),  Y_m.to(torch.float32).to(self.device)
+            X = X.to(torch.float32).to(self.device)
+            X_c, X_t, X_m = X_c.to(torch.float32).to(self.device), X_t.to(torch.float32).to(self.device),  X_m.to(torch.float32).to(self.device)
 
-            loss, loss_marker, loss_c, loss_t, loss_m = self.run_batch(X, Y, Y_c, Y_t, Y_m)
+            Y_c, Y_t, Y_m, Y = self.run_batch(X)
+            losses = self.criterion((X, X_c, X_t, X_m), (Y, Y_c, Y_t, Y_m))
+            loss, loss_marker, loss_c, loss_t, loss_m = losses
             total_loss += loss.item()
             total_loss_c += loss_c.item()
             total_loss_t += loss_t.item()
@@ -120,13 +118,15 @@ class MS_Agent(BaseAgent):
 
         self.model.eval()
         with torch.no_grad():
-            for batch_idx, (X, Y, Y_c, Y_t, Y_m) in enumerate(self.val_data_loader):
+            for batch_idx, (X_c, X_t, X_m, X) in enumerate(self.val_data_loader):
                 bs = X_c.shape[0]
                 n += bs
-                X, Y = X.to(torch.float32).to(self.device), Y.to(torch.float32).to(self.device)
-                Y_c, Y_t, Y_m = Y_c.to(torch.float32).to(self.device), Y_t.to(torch.float32).to(self.device),  Y_m.to(torch.float32).to(self.device)
+                X = X.to(torch.float32).to(self.device)
+                X_c, X_t, X_m = X_c.to(torch.float32).to(self.device), X_t.to(torch.float32).to(self.device),  X_m.to(torch.float32).to(self.device)
 
-                loss, loss_marker, loss_c, loss_t, loss_m = self.run_batch(X, Y, Y_c, Y_t, Y_m)
+                Y_c, Y_t, Y_m, Y = self.run_batch(X)
+                losses = self.criterion((X, X_c, X_t, X_m), (Y, Y_c, Y_t, Y_m))
+                loss, loss_marker, loss_c, loss_t, loss_m = losses
                 total_loss += loss.item()
 
                 tqdm_update = "Epoch={0:04d},loss={1:.4f}".format(epoch, loss.item() / bs)
@@ -155,7 +155,3 @@ class MS_Agent(BaseAgent):
         ckpt = torch.load(decoder_dir)
         self.ms_decoder.load_state_dict(ckpt['decoder'])
         self.ms_decoder.freeze_params() # freeze params to avoid backprop
-
-    def load_normalizer(self, ckpt_dir):
-        ckpt = torch.load(ckpt_dir)
-        self.f_mr.load_state_dict(ckpt['model'])

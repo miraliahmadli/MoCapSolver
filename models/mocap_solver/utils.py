@@ -154,7 +154,7 @@ class AE_loss(nn.Module):
         loss_c = self.crit_c(Y_c, X_c, Y_t, X_t)
         loss_t = self.crit_t(Y_t, X_t)
         loss_m = self.crit_m(Y_m, X_m, Y_t, X_t)
-        return loss_t, loss_m, loss_c
+        return loss_c, loss_t, loss_m
 
 
 class MS_loss(nn.Module):

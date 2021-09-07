@@ -69,7 +69,7 @@ def test():
     train_steps = len(dataset) // bs
     
     data_loader = DataLoader(dataset, batch_size=bs,\
-                                shuffle=False, num_workers=8, pin_memory=True)
+                            shuffle=False, num_workers=8, pin_memory=True)
     raw, gt = next(iter(data_loader)) 
     print(raw.shape)
     print(gt.shape)
