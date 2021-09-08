@@ -19,7 +19,8 @@ from fairmotion.utils import utils
 viewer = None
 cam = None
 focus_markers = [4, 9, 23, 28, 39, 40]
-focus_joint = 11
+local_ref_markers = [3, 7, 11, 21, 32, 36, 46, 54]
+focus_joint = 0
 
 class MocapViewer(glut_viewer.Viewer):
     """
@@ -36,6 +37,7 @@ class MocapViewer(glut_viewer.Viewer):
         fps_vid,
         res,
         focus,
+        draw_lrfm,
         play_speed=1.0,
         scale=0.1,
         thickness=1.0,
@@ -49,6 +51,7 @@ class MocapViewer(glut_viewer.Viewer):
         self.fps_vid = fps_vid
         self.res = res
         self.focus = focus
+        self.draw_lrfm = draw_lrfm
         self.play_speed = play_speed
         self.render_overlay = render_overlay
         self.hide_origin = hide_origin
@@ -137,7 +140,11 @@ class MocapViewer(glut_viewer.Viewer):
             cam.origin = np.mean(pose[focus_markers], axis=-2).reshape((3, ))
         for m in range(pose.shape[0]):
             pos = pose[m].reshape((3, 1))
-            gl_render.render_point(pos, radius=0.4 * self.scale, color=np.array(color) / 255.0)
+            if self.draw_lrfm and m in local_ref_markers:
+                gl_render.render_point(pos, radius=0.6 * self.scale, color=np.array([0.0, 0.0, 0.0, 255.0]) / 255.0)
+            else:
+                gl_render.render_point(pos, radius=0.6 * self.scale, color=np.array(color) / 255.0)
+                
         if not self.saving:
             self.saving = True
             self.save_video()
@@ -161,8 +168,10 @@ class MocapViewer(glut_viewer.Viewer):
             origin=not self.hide_origin,
             use_arrow=True,
         )
-        self._render_characters()
-        self._render_characters2()
+        if len(self.skels) != 0:
+            self._render_characters()
+        if len(self.markers) != 0:
+            self._render_characters2()
 
     def idle_callback(self):
         time_elapsed = self.time_checker.get_time(restart=False)
@@ -182,9 +191,9 @@ class MocapViewer(glut_viewer.Viewer):
         #     )
 
 
-def visualize(Xs, Ys, colors_X=[[0, 0, 0, 255]], colors_Y=[[0, 255, 0, 255], [255, 0, 0, 255]],
-              hierarchy_file="dataset/hierarchy.txt", export_fname="./test.mp4", res=(1280, 720),
-              fps_anim=120.0, fps_vid=60.0, focus="skel"):
+def visualize(Xs=np.array([]), Ys=np.array([]), colors_X=[[0, 0, 0, 255]], colors_Y=[[0, 255, 0, 255], [255, 0, 0, 255]],
+              hierarchy_file="dataset/hierarchy.txt", export_fname="./test.mp4", res=(1920, 1080),
+              fps_anim=120.0, fps_vid=25.0, focus="skel", draw_lrfm=False):
     """
     Visualize skeleton and/or markers and export as mp4
 
@@ -199,6 +208,7 @@ def visualize(Xs, Ys, colors_X=[[0, 0, 0, 255]], colors_Y=[[0, 255, 0, 255], [25
         fps_anim: Fps of the animation
         fps_vid: Fps of the exported video
         focus: "skel" for skeleton, "marker" for ref markers
+        draw_lrfm: draw local ref markers in different color
 
     """
     X, Y = Xs, Ys
@@ -238,8 +248,8 @@ def visualize(Xs, Ys, colors_X=[[0, 0, 0, 255]], colors_Y=[[0, 255, 0, 255], [25
         })
     global cam
     cam = camera.Camera(
-        pos=np.array(args.camera_position),
-        origin=np.array(args.camera_origin),#xform[0, 0, :, 3]
+        pos=np.array((15.0, 15.0, 15.0)),
+        origin=np.array((0.0, 0.0, 0.0)),#xform[0, 0, :, 3]
         vup=v_up_env,
         fov=45.0,
     )
@@ -251,19 +261,27 @@ def visualize(Xs, Ys, colors_X=[[0, 0, 0, 255]], colors_Y=[[0, 255, 0, 255], [25
         fps_vid = fps_vid,
         res = res,
         focus = focus,
-        render_overlay=args.render_overlay,
-        hide_origin=args.hide_origin,
+        draw_lrfm = draw_lrfm,
+        render_overlay=True,
+        hide_origin=True,
         title="Motion Graph Viewer",
         cam=cam,
         size=res,
     )
     viewer.run()
 
-
 def main(args):
-    X = np.load("tools/viz/X_sample_nan.npy")
-    Y = np.load("tools/viz/Y_sample_nan.npy")
-    visualize(X, Y)
+    from tools.utils import LBS
+    import torch
+    a = np.load("dataset/synthetic/70_09_poses_0.npz")
+    Y = np.concatenate([a.f.J_R, np.expand_dims(a.f.J_t, axis=-1)], axis=-1)
+    markers = a.f.raw_markers
+    # Z = np.expand_dims(a.f.marker_configuration, axis=0)
+    # w = np.load("dataset/weights.npy")
+    # markers = LBS(torch.tensor(w), torch.tensor(Y), torch.tensor(Z), device="cpu")
+    # raw_markers = a.f.raw_markers[..., [0, 2, 1]] * 10
+    # clean_markers = a.f.clean_markers[..., [0, 2, 1]] * 10
+    visualize(Xs=markers[..., [0, 2, 1]] * 10, Ys=Y[..., [0, 2, 1], :] * 10, colors_X=[[255, 0, 0, 255], [0, 0, 255, 255]], hierarchy_file="dataset/hierarchy_synthetic_bfs.txt", draw_lrfm=True)
 
 
 if __name__ == "__main__":
@@ -288,7 +306,7 @@ if __name__ == "__main__":
         nargs="+",
         type=float,
         required=False,
-        default=(15.0, 15.0, 15.0),
+        default=(5.0, 5.0, 5.0),
     )
     parser.add_argument(
         "--camera-origin",
