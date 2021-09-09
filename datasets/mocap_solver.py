@@ -17,7 +17,7 @@ def read_file_ae(fname):
     offsets = torch.tensor(offsets)
 
     # get motion
-    R = data["J_R"]
+    R = data["J_R_local"]
     root_t = data["J_t"][:, 0]
     R = torch.tensor(R)
     root_t = torch.tensor(root_t)
@@ -41,7 +41,7 @@ def read_file_ms(fname):
     raw_markers = torch.tensor(raw_markers)
 
     # get motion
-    R = data["J_R"] # num_frames x j x 3 x 3
+    R = data["J_R_local"] # num_frames x j x 3 x 3
     root_t = data["J_t"][:, 0] # num_frames x 3
     R = torch.tensor(R)
     root_t = torch.tensor(root_t)
