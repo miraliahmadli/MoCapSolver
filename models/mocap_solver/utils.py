@@ -13,10 +13,10 @@ class ResidualBlock(nn.Module):
         self.relu = nn.ReLU()
 
     def forward(self, x):
-        out = self.bn(x)
-        out = self.relu(out)
+        res = self.bn(x)
+        out = self.relu(res)
         out = self.dense(out)
-        out += x
+        out += res
         return out
 
 
@@ -44,14 +44,15 @@ class DenseBlock(nn.Module):
 class MSBlock(nn.Module):
     def __init__(self, hidden_size: int, out_size: int):
         super(MSBlock, self).__init__()
-        self.res_block = ResidualBlock(hidden_size, hidden_size)
+        self.res_block_1 = ResidualBlock(hidden_size, hidden_size)
+        self.res_block_2 = ResidualBlock(hidden_size, hidden_size)
         self.dense = nn.Linear(hidden_size, out_size)
         self.relu = nn.ReLU()
 
     def forward(self, x):
         x = x.view(x.shape[0], -1)
-        out = self.res_block(x)
-        out = self.res_block(out)
+        out = self.res_block_1(x)
+        out = self.res_block_2(out)
         out = self.relu(out)
         out = self.dense(out)
         return out
@@ -99,7 +100,7 @@ def FK(topology, rotation, position, offset, world=True):
 
 def LBS(w, Y_c, Y_t):
     X = (Y_t.unsqueeze(0) + Y_c)*w # m x j x 3
-    X = X.mean(axis=1) # m x 3
+    X = X.sum(axis=1) # m x 3
     return X
 
 
@@ -144,9 +145,9 @@ class AE_loss(nn.Module):
     def __init__(self, marker_weights, joint_weights, betas, weight_assignment):
         super(AE_loss, self).__init__()
         b1, b2, b3, b4 = betas
-        self.crit_c = Offset_loss(marker_weights, joint_weights, b3, b4, weight_assignment)
-        self.crit_t = weighted_L1_loss(joint_weights, mode="mean")
-        self.crit_m = Motion_loss(joint_weights, b1, b2)
+        self.crit_c = Offset_loss(1, 1, b3, b4, weight_assignment)
+        self.crit_t = weighted_L1_loss(1, mode="mean")
+        self.crit_m = Motion_loss(1, b1, b2)
 
     def forward(self, Y, X):
         Y_c, Y_t, Y_m = Y
@@ -158,13 +159,13 @@ class AE_loss(nn.Module):
 
 
 class MS_loss(nn.Module):
-    def __init__(self, joint_weights, alphas):
+    def __init__(self, joint_weights, marker_weights, alphas):
         super(MS_loss, self).__init__()
         self.a1, self.a2, self.a3, self.a4 = alphas
-        self.crit = weighted_L1_loss(joint_weights)
-        self.crit_c = weighted_L1_loss(joint_weights)
-        self.crit_t = weighted_L1_loss(joint_weights)
-        self.crit_m = weighted_L1_loss(joint_weights)
+        self.crit = weighted_L1_loss(1, mode="mean")
+        self.crit_c = weighted_L1_loss(1, mode="mean")
+        self.crit_t = weighted_L1_loss(1, mode="mean")
+        self.crit_m = weighted_L1_loss(1, mode="mean")
 
     def forward(self, Y, X):
         Y_, Y_c, Y_t, Y_m = Y
@@ -175,4 +176,4 @@ class MS_loss(nn.Module):
         loss_m = self.crit_m(Y_m, X_m)
 
         loss = self.a1 * loss_marker + self.a2 * loss_c + self.a3 * loss_t + self.a4 * loss_m
-        return loss, loss_marker, loss_c, loss_t, loss_m
+        return 1000*loss, loss_marker, loss_c, loss_t, loss_m

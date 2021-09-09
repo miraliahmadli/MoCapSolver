@@ -68,11 +68,31 @@ class MocapSolver(nn.Module):
         return outputs
 
 
+class MSD(nn.Module):
+    def __init__(self, edges, num_markers=56, num_joints=24, window_size=64):
+        super(MSD, self).__init__()
+        self.decoder = AE(edges, num_markers, num_joints, 1024, offset_dims=[72, 168], 
+                               offset_channels=[1, 8], offset_joint_num=[num_joints, 7]).decoder
+        self.mocap_solver = MocapSolver(num_markers, window_size, 1024,
+                                use_motion=True, use_marker_conf=True, use_skeleton=True)
+
+        self.num_joints = num_joints
+        self.num_markers = num_markers
+
+    def forward(self, X):
+        l_c, l_t, l_m = self.mocap_solver(X)
+        l_m = l_m.view(l_m.shape[0], 16, -1)
+        Y_c, Y_t, Y_m = self.decoder(l_c, l_t, l_m)
+        Y_c = Y_c.view(Y_c.shape[0], self.num_markers, self.num_joints, 3)
+        Y_t = Y_t.view(Y_t.shape[0], self.num_joints, 3)
+        return Y_c, Y_t, Y_m
+
+
 def test_models():
     from models.mocap_solver.skeleton import build_edge_topology
     def get_topology():
-        joint_topology = [-1] * 25
-        with open("../../dataset/hierarchy_no_hand.txt") as f:
+        joint_topology = [-1] * 24
+        with open("./dataset/hierarchy_synthetic_bfs.txt") as f:
             lines = f.readlines()
             for l in lines:
                 lst = list(map(int, l.strip().split()))
@@ -87,10 +107,10 @@ def test_models():
     print("-------------")
 
     print("AutoEncoder")
-    x_c = torch.rand(5, 56 * 25 * 3)
-    x_m = torch.rand(5, len(edges)*4 + 3, 64)
+    x_c = torch.rand(5, 56 * 24 * 3)
+    x_m = torch.rand(5, len(joint_topology)*4 + 3, 64)
     x_t = torch.rand(5, len(joint_topology) * 3)
-    auto_encoder = AE(edges, 56, 25, 1024, offset_dims=[75, 168], 
+    auto_encoder = AE(edges, 56, 24, 1024, offset_dims=[24*3, 168],
                     offset_channels=[1, 8], offset_joint_num=[len(joint_topology), 7])
     outs = auto_encoder(x_c, x_t, x_m)
     for out in outs:

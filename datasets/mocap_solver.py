@@ -8,7 +8,6 @@ from torch.utils.data import Dataset
 from tools.transform import matrix_to_quaternion, quaternion_to_matrix
 from tools.utils import xform_inv, xform_to_mat44
 from tools.preprocess import local_frame_F
-from tools.viz import visualize
 
 
 def read_file_ae(fname):
@@ -133,7 +132,7 @@ class MS_Dataset(Dataset):
         F_inv = xform_inv(F)
         raw_markers_normalized = F_inv[..., :3].unsqueeze(1) @ raw_markers[..., None] + F_inv[..., 3, None].unsqueeze(1)
 
-        return X_c, X_t, X_m, raw_markers_normalized.squeeze(-1), F
+        return X_c, X_t, X_m, raw_markers_normalized.squeeze(-1)#, F
 
 
 def test():
@@ -166,6 +165,7 @@ def test():
 
     print(root_quat_to_mat.shape)
     print(root_tr.shape)
+    # from tools.viz import visualize
     # visualize(Xs=norm_markers[0].cpu().numpy()[None, ...])
 
 

@@ -108,6 +108,10 @@ class DynamicEncoder(nn.Module):
             neighbor_list = find_neighbor(self.topologies[i], skeleton_dist)
             in_channels = self.channel_base[i] * self.edge_num[i]
             out_channels = self.channel_base[i+1] * self.edge_num[i]
+            if i == 0:
+                in_channels += 4
+                out_channels = in_channels * 2
+                
             if i == 0: self.channel_list.append(in_channels)
             self.channel_list.append(out_channels)
 
@@ -167,7 +171,7 @@ class DynamicDecoder(nn.Module):
             neighbor_list = find_neighbor(enc.topologies[num_layers - i - 1], skeleton_dist)
 
             unpool = SkeletonUnpool(enc.pooling_list[num_layers - i - 1], 
-                                    in_channels // len(neighbor_list))
+                                    in_channels // len(neighbor_list), last_unpool=(i==num_layers-1))
             self.unpools.append(unpool)
             seq.append(unpool)
 
@@ -347,8 +351,8 @@ class Decoder(nn.Module):
 
 def test_models():
     def get_topology():
-        joint_topology = [-1] * 25
-        with open("../../dataset/hierarchy_no_hand.txt") as f:
+        joint_topology = [-1] * 24
+        with open("./dataset/hierarchy_synthetic_bfs.txt") as f:
             lines = f.readlines()
             for l in lines:
                 lst = list(map(int, l.strip().split()))
@@ -375,7 +379,7 @@ def test_models():
     print("\n----------------------------\n")
 
     print("Dynamic encodder")
-    x_m = torch.rand(5, len(edges)*4 + 3, 64)
+    x_m = torch.rand(5, len(joint_topology)*4 + 3, 64)
     print(x_m.shape)
     dynamic_enc = DynamicEncoder(edges, skeleton_info='')
     lat_m = dynamic_enc(x_m)

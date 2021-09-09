@@ -11,7 +11,7 @@ from datasets.mocap_solver import AE_Dataset
 
 class EncoderAgent(BaseAgent):
     def __init__(self, cfg, test=False, sweep=False):
-        super(RS_Agent, self).__init__(cfg, test, sweep)
+        super(EncoderAgent, self).__init__(cfg, test, sweep)
         self.joint_weights = cfg.joint_weights
         self.marker_weights = cfg.marker_weights
         self.skinning_w = cfg.weight_assignment

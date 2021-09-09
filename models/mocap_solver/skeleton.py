@@ -17,8 +17,6 @@ class SkeletonConv(nn.Module):
                  add_offset=False, in_offset_channel=0, offset_joint_num=None):
         self.in_channels_per_joint = in_channels // joint_num
         self.out_channels_per_joint = out_channels // joint_num
-        if in_channels % joint_num != 0 or out_channels % joint_num != 0:
-            raise Exception('BAD')
         super(SkeletonConv, self).__init__()
 
         if padding_mode == 'zeros': padding_mode = 'constant'
@@ -219,7 +217,7 @@ class SkeletonPool(nn.Module):
         self.description = 'SkeletonPool(in_edge_num={}, out_edge_num={})'.format(
             len(edges), len(self.pooling_list)
         )
-        self.weight = torch.zeros(len(self.pooling_list) * channels_per_edge, self.edge_num * channels_per_edge)
+        self.weight = torch.zeros(len(self.pooling_list) * channels_per_edge, (self.edge_num + int(not last_pool))* channels_per_edge)
 
         for i, pair in enumerate(self.pooling_list):
             for j in pair:
@@ -241,11 +239,11 @@ class SkeletonUnpool(nn.Module):
     of each edge that is originated by a merging of two edges 
     in the corresponding pooling step
     '''
-    def __init__(self, pooling_list, channels_per_edge):
+    def __init__(self, pooling_list, channels_per_edge, last_unpool=False):
         super(SkeletonUnpool, self).__init__()
         self.pooling_list = pooling_list
         self.input_edge_num = len(pooling_list)
-        self.output_edge_num = 0
+        self.output_edge_num = int(last_unpool)
         self.channels_per_edge = channels_per_edge
         for t in self.pooling_list:
             self.output_edge_num += len(t)
