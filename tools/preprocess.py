@@ -129,6 +129,14 @@ def local_frame(X, Y, X_mean, device="cuda"):
 
     return F, Y_local
 
+def local_frame_F(X, X_mean, local_frame_markers, device="cuda"):
+    X_picked = X[:, local_frame_markers, :]
+    R, t = svd_rot(X_mean.permute(1, 2, 0), X_picked.permute(0, 2, 1))
+
+    F = torch.cat([R, t], axis=-1)
+
+    return F
+
 
 if __name__ == "__main__":
     x = torch.rand(100, 41, 3)
