@@ -216,18 +216,24 @@ def visualize(Xs=np.array([]), Ys=np.array([]), colors_X=[[0, 0, 0, 255]], color
         X = np.expand_dims(X, axis=0)
     if Y.ndim == 4:
         Y = np.expand_dims(Y, axis=0)
+    
+    nX, nY = 0, 0
+    adj = None
+    
+    if X.ndim != 1:
+        nX = X.shape[0]
+    
+    if Y.ndim != 1:
+        num_joints = Y.shape[2]
+        nY = Y.shape[0]
 
-    num_joints = Y.shape[2]
-    nX, nY = X.shape[0], Y.shape[0]
-
-    v_up_env = utils.str_to_axis("y")
-    adj = [[] for i in range(num_joints)]
-    with open(hierarchy_file) as file:
-        lines = file.readlines()
-        for line in lines:
-            splitted = line.split()
-            for i in range(len(splitted) - 1):
-                adj[int(splitted[0])].append(int(splitted[i + 1]))
+        adj = [[] for i in range(num_joints)]
+        with open(hierarchy_file) as file:
+            lines = file.readlines()
+            for line in lines:
+                splitted = line.split()
+                for i in range(len(splitted) - 1):
+                    adj[int(splitted[0])].append(int(splitted[i + 1]))
     
     markers = []
     skels = []
@@ -246,6 +252,8 @@ def visualize(Xs=np.array([]), Ys=np.array([]), colors_X=[[0, 0, 0, 255]], color
             'adj': adj,
             'color': colors_Y[i % len(colors_Y)]
         })
+
+    v_up_env = utils.str_to_axis("y")
     global cam
     cam = camera.Camera(
         pos=np.array((15.0, 15.0, 15.0)),
