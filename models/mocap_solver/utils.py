@@ -81,8 +81,8 @@ def split_raw_motion(raw_motion):
     return rotation, position
 
 
-def FK(topology, rotation, position, offset, world=True):
-    result = torch.empty(rotation.shape[:-1] + (3, ), device=position.device) # bs x T x J x 3
+def FK(topology, rotation, offset, world=True):
+    result = torch.empty(rotation.shape[:-1] + (3, ), device=rotation.device) # bs x T x J x 3
     transform = quaternion_to_matrix(rotation) # bs x T x J x 3 x 3
     offset = offset.reshape((-1, 1, offset.shape[-2], offset.shape[-1], 1)) # bs x 1 x J x 3 x 1
 
@@ -118,8 +118,8 @@ class Motion_loss(nn.Module):
         rotation_y, position_y = split_raw_motion(Y_m)
 
         loss_rot = self.b1 * self.rot_crit(rotation_y, rotation_x)
-        loss_fk = self.b2 * self.fk_crit(FK(self.topology, rotation_y, position_y, Y_t), 
-                                         FK(self.topology, rotation_x, position_x, X_t))
+        loss_fk = self.b2 * self.fk_crit(FK(self.topology, rotation_y, Y_t), 
+                                         FK(self.topology, rotation_x, X_t))
         loss_pos = torch.abs(position_x - position_y).mean()
         loss = loss_rot + loss_fk + loss_pos
         return loss
@@ -168,12 +168,12 @@ class MS_loss(nn.Module):
         self.crit_m = weighted_L1_loss(1, mode="mean")
 
     def forward(self, Y, X):
-        Y_, Y_c, Y_t, Y_m = Y
-        X_, X_c, X_t, X_m = X
-        loss_marker = self.crit(Y_, X_)
+        Y_c, Y_t, Y_m = Y
+        X_c, X_t, X_m = X
+        # loss_marker = self.crit(Y_, X_)
         loss_c = self.crit_c(Y_c, X_c)
         loss_t = self.crit_t(Y_t, X_t)
         loss_m = self.crit_m(Y_m, X_m)
 
-        loss = self.a1 * loss_marker + self.a2 * loss_c + self.a3 * loss_t + self.a4 * loss_m
-        return 1000*loss, loss_marker, loss_c, loss_t, loss_m
+        loss = self.a2 * loss_c + self.a3 * loss_t + self.a4 * loss_m #self.a1 * loss_marker
+        return loss

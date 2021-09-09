@@ -331,7 +331,7 @@ class Decoder(nn.Module):
     def forward(self, l_c, l_t, l_m):
         # static decoder
         Y_t = self.static_dec(l_t.T)
-        
+
         # offsets
         offset_dec = [l_t, Y_t]
 

@@ -59,27 +59,19 @@ class MS_Agent(BaseAgent):
                                             shuffle=False, num_workers=8, pin_memory=True)
 
     def run_batch(self, X):
-        # l_c, l_t, l_m = self.model(X)
-        # l_m = l_m.view(l_m.shape[0], 16, -1)
-        # Y_c, Y_t, Y_m = self.ms_decoder(l_c, l_t, l_m)
-        # Y_c = Y_c.view(Y_c.shape[0], self.num_markers, self.num_joints, 3)
-        # Y_t = Y_t.view(Y_t.shape[0], self.num_joints, 3)
         Y_c, Y_t, Y_m = self.model(X)
 
         # TODO: apply skinning to get Y
         # 1. quat to matrix
         # 2. get affine matrix
         # 3. LBS(w, Y, Y_c)
-        Y = X
+        # Y = X
 
-        return Y_c, Y_t, Y_m, Y
+        return Y_c, Y_t, Y_m
 
     def train_per_epoch(self, epoch):
         tqdm_batch = tqdm(total=self.train_steps, dynamic_ncols=True) 
         total_loss = 0
-        total_loss_c = 0
-        total_loss_t = 0
-        total_loss_m = 0
         total_angle_diff = 0
         total_jp_err = 0
         n = 0
@@ -93,20 +85,17 @@ class MS_Agent(BaseAgent):
             X = X.to(torch.float32).to(self.device)
             X_c, X_t, X_m = X_c.to(torch.float32).to(self.device), X_t.to(torch.float32).to(self.device),  X_m.to(torch.float32).to(self.device)
 
-            Y_c, Y_t, Y_m, Y = self.run_batch(X)
-            losses = self.criterion((X, X_c, X_t, X_m), (Y, Y_c, Y_t, Y_m))
-            loss, loss_marker, loss_c, loss_t, loss_m = losses
+            Y_c, Y_t, Y_m = self.run_batch(X)
+            losses = self.criterion((Y_c, Y_t, Y_m), (X_c, X_t, X_m))
+            loss = losses
             total_loss += loss.item()
-            total_loss_c += loss_c.item()
-            total_loss_t += loss_t.item()
-            total_loss_m += loss_m.item()
 
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
 
-            quat_X = X_m[...,:-3].view(bs, self.cfg.window_size, self.num_joints, 4)
-            quat_Y = Y_m[...,:-3].view(bs, self.cfg.window_size, self.num_joints, 4)
+            quat_X = X_m[...,:-3].detach().clone().view(bs, self.cfg.window_size, self.num_joints, 4)
+            quat_Y = Y_m[...,:-3].detach().clone().view(bs, self.cfg.window_size, self.num_joints, 4)
             R_x = quaternion_to_matrix(quat_X)
             R_y = quaternion_to_matrix(quat_Y)
             R = R_y.transpose(-2, -1) @ R_x
@@ -116,23 +105,23 @@ class MS_Agent(BaseAgent):
 
             jp_err = torch.norm(X_t - Y_t, 2, dim=-1) # n x j
             total_jp_err += jp_err.sum()
-            # mp_err = 
 
-            tqdm_update = "Epoch={0:04d},loss={1:.4f}, angle_diff={2:.4f}, jpe={3:.4f}".format(epoch, loss.item() / bs, angle_diff.mean(), jp_err.mean())
+            tqdm_update = "Epoch={0:04d},loss={1:.4f}, angle_diff={2:.4f}, jpe={3:.4f}".format(epoch, 1000*loss.item() / bs, angle_diff.mean(), jp_err.mean())
             tqdm_batch.set_postfix_str(tqdm_update)
             tqdm_batch.update()
+            if epoch == 70:
+                np.save("asdx.npy", X_t.detach().cpu().numpy())
+                np.save("asdy.npy", Y_t.detach().cpu().numpy())
+                exit()
 
         total_loss /= n
-        total_loss_c /= n
-        total_loss_t /= n
-        total_loss_m /= n
-        total_angle_diff *= 180 / (n * np.pi)
+        # total_angle_diff *= 180 / (n * np.pi)
         # self.write_summary(self.val_writer, total_loss, epoch)
         # self.wandb_summary(False, total_loss, epoch)
 
-        # tqdm_update = "Train: Epoch={0:04d},loss={1:.4f}, angle_diff={2:.4f}".format(epoch, total_loss, total_angle_diff.mean())
-        # tqdm_batch.set_postfix_str(tqdm_update)
-        # tqdm_batch.update()
+        tqdm_update = "Train: Epoch={0:04d},loss={1:.4f}".format(epoch, 1000*total_loss)#, total_angle_diff.mean())
+        tqdm_batch.set_postfix_str(tqdm_update)
+        tqdm_batch.update()
         tqdm_batch.close()
 
         message = f"epoch: {epoch}, loss: {total_loss}"
@@ -155,13 +144,13 @@ class MS_Agent(BaseAgent):
                 X = X.to(torch.float32).to(self.device)
                 X_c, X_t, X_m = X_c.to(torch.float32).to(self.device), X_t.to(torch.float32).to(self.device),  X_m.to(torch.float32).to(self.device)
 
-                Y_c, Y_t, Y_m, Y = self.run_batch(X)
-                losses = self.criterion((X, X_c, X_t, X_m), (Y, Y_c, Y_t, Y_m))
-                loss, loss_marker, loss_c, loss_t, loss_m = losses
+                Y_c, Y_t, Y_m = self.run_batch(X)
+                losses = self.criterion((Y_c, Y_t, Y_m), (X_c, X_t, X_m))
+                loss = losses
                 total_loss += loss.item()
 
-                quat_X = X_m[...,:-3].view(bs, self.cfg.window_size, self.num_joints, 4)
-                quat_Y = Y_m[...,:-3].view(bs, self.cfg.window_size, self.num_joints, 4)
+                quat_X = X_m[...,:-3].detach().clone().view(bs, self.cfg.window_size, self.num_joints, 4)
+                quat_Y = Y_m[...,:-3].detach().clone().view(bs, self.cfg.window_size, self.num_joints, 4)
                 R_x = quaternion_to_matrix(quat_X)
                 R_y = quaternion_to_matrix(quat_Y)
                 R = R_y.transpose(-2, -1) @ R_x
@@ -172,18 +161,22 @@ class MS_Agent(BaseAgent):
                 jp_err = torch.norm(X_t - Y_t, 2, dim=-1) # n x j
                 total_jp_err += jp_err.sum()
 
-                tqdm_update = "Epoch={0:04d}, loss={1:.4f}, angle_diff={2:.4f}, jpe={3:.4f}".format(epoch, loss.item() / bs, angle_diff.mean(), jp_err.mean())
+                tqdm_update = "Epoch={0:04d}, loss={1:.4f}, angle_diff={2:.4f}, jpe={3:.4f}".format(epoch, 1000*loss.item() / bs, angle_diff.mean(), jp_err.mean())
                 tqdm_batch.set_postfix_str(tqdm_update)
                 tqdm_batch.update()
+                if epoch == 70:
+                    np.save("asdx.npy", X_t.detach().cpu().numpy())
+                    np.save("asdy.npy", Y_t.detach().cpu().numpy())
+                    exit()
 
         total_loss /= n
-        total_angle_diff *= 180 / (n * np.pi)
+        # total_angle_diff *= 180 / (n * np.pi)
         # self.write_summary(self.val_writer, total_loss, epoch)
         # self.wandb_summary(False, total_loss, epoch)
 
-        # tqdm_update = "Val  : Epoch={0:04d},loss={1:.4f}, angle_diff={2:.4f}".format(epoch, total_loss, total_angle_diff.mean())
-        # tqdm_batch.set_postfix_str(tqdm_update)
-        # tqdm_batch.update()
+        tqdm_update = "Val  : Epoch={0:04d},loss={1:.4f}".format(epoch, 1000*total_loss)
+        tqdm_batch.set_postfix_str(tqdm_update)
+        tqdm_batch.update()
         tqdm_batch.close()
 
         message = f"epoch: {epoch}, loss: {total_loss}"
