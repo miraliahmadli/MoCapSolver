@@ -130,9 +130,10 @@ class MS_Dataset(Dataset):
 
         F = local_frame_F(raw_markers, ref_marker_pos.unsqueeze(1), self.local_ref_markers)
         F_inv = xform_inv(F)
+        nans = ~((raw_markers != 0.0).any(axis=-1))
         raw_markers_normalized = F_inv[..., :3].unsqueeze(1) @ raw_markers[..., None] + F_inv[..., 3, None].unsqueeze(1)
-
-        return X_c, X_t, X_m, raw_markers_normalized.squeeze(-1)#, F
+        raw_markers_normalized[nans] = torch.zeros((3,1)).to(torch.float32)
+        return X_c, X_t, X_m, raw_markers_normalized.squeeze(-1), F
 
 
 def test():
@@ -148,11 +149,11 @@ def test():
     # print(raw_markers.shape)
     # return
     # print(fnames[0])
-    dataset = MS_Dataset(fnames[:2])
+    dataset = MS_Dataset(fnames[30:32])
     # print(len(dataset))
     
     data_loader = DataLoader(dataset, batch_size=bs,
-                            shuffle=False, num_workers=8, pin_memory=True)
+                            shuffle=True, num_workers=8, pin_memory=True)
     X_c, X_t, X_m, norm_markers, F = next(iter(data_loader)) 
     # print(X_c.shape)
     # print(X_t.shape)
@@ -163,10 +164,10 @@ def test():
     root_quat_to_mat = quaternion_to_matrix(root_quat)
     root_tr = X_m[..., -3: , None]
 
-    print(root_quat_to_mat.shape)
-    print(root_tr.shape)
-    # from tools.viz import visualize
-    # visualize(Xs=norm_markers[0].cpu().numpy()[None, ...])
+    # print(root_quat_to_mat.shape)
+    # print(root_tr.shape)
+    from tools.viz import visualize
+    visualize(Xs=norm_markers[0].cpu().numpy()[None, ...] * 10.0)
 
 
 if __name__ == "__main__":
