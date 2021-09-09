@@ -5,8 +5,10 @@ import multiprocess
 
 import torch
 from torch.utils.data import Dataset
-from tools.transform import matrix_to_quaternion
+from tools.transform import matrix_to_quaternion, quaternion_to_matrix
 from tools.utils import xform_inv, xform_to_mat44
+from tools.preprocess import local_frame_F
+from tools.viz import visualize
 
 
 def read_file_ae(fname):
@@ -109,7 +111,7 @@ class MS_Dataset(Dataset):
 
         xform_ref_joint = [m[4][:, local_ref_joint] for m in data]
         xform_inv_ref_joint = [xform_inv(m[4][:, local_ref_joint]).unsqueeze(1) for m in data]
-        self.local_ref_markers = [(xform_inv_ref_joint[i][...,:3] @ m[3][:, local_ref_markers, :, None] + xform_inv_ref_joint[i][...,3, None]).squeeze(-1) for i, m in enumerate(data)]
+        self.ref_marker_pos = [(xform_inv_ref_joint[i][...,:3] @ m[3][:, local_ref_markers, :, None] + xform_inv_ref_joint[i][...,3, None]).squeeze(-1) for i, m in enumerate(data)]
 
         self.indices = []
         for f_idx in range(len(self.X_m)):
@@ -125,11 +127,13 @@ class MS_Dataset(Dataset):
         X_t = self.X_t[f_idx] # j x 3
         X_m = self.X_m[f_idx][pivot : pivot + self.window_size] # T x (J*4 + 3)
         raw_markers = self.raw[f_idx][pivot : pivot + self.window_size] # T x m x 3
+        ref_marker_pos = self.ref_marker_pos[f_idx][pivot]
 
-        # TODO: normalize raw_markers using reference frame
-        ref_frame = raw_markers[0, ]
+        F = local_frame_F(raw_markers, ref_marker_pos.unsqueeze(1), self.local_ref_markers)
+        F_inv = xform_inv(F)
+        raw_markers_normalized = F_inv[..., :3].unsqueeze(1) @ raw_markers[..., None] + F_inv[..., 3, None].unsqueeze(1)
 
-        return X_c, X_t, X_m, self.local_ref_markers
+        return X_c, X_t, X_m, raw_markers_normalized.squeeze(-1), F
 
 
 def test():
@@ -144,17 +148,25 @@ def test():
     # print(motion_quat.shape)
     # print(raw_markers.shape)
     # return
-    print(fnames[0])
+    # print(fnames[0])
     dataset = MS_Dataset(fnames[:2])
-    print(len(dataset))
+    # print(len(dataset))
     
     data_loader = DataLoader(dataset, batch_size=bs,
                             shuffle=False, num_workers=8, pin_memory=True)
-    X_c, X_t, X_m = next(iter(data_loader)) 
-    print(X_c.shape)
-    print(X_t.shape)
-    print(X_m.shape)
+    X_c, X_t, X_m, norm_markers, F = next(iter(data_loader)) 
+    # print(X_c.shape)
+    # print(X_t.shape)
+    # print(X_m.shape)
     # print(norm_markers.shape)
+    # print(F.shape)
+    root_quat = X_m[..., :4]
+    root_quat_to_mat = quaternion_to_matrix(root_quat)
+    root_tr = X_m[..., -3: , None]
+
+    print(root_quat_to_mat.shape)
+    print(root_tr.shape)
+    # visualize(Xs=norm_markers[0].cpu().numpy()[None, ...])
 
 
 if __name__ == "__main__":
