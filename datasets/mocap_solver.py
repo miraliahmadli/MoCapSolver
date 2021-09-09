@@ -6,12 +6,13 @@ import multiprocess
 import torch
 from torch.utils.data import Dataset
 from tools.transform import matrix_to_quaternion
+from tools.utils import xform_inv, xform_to_mat44
 
 
 def read_file_ae(fname):
     data = np.load(fname)
     # T-pose
-    skeleton = data["J"]
+    skeleton = data["J_t_local"]
     offsets = data["marker_configuration"]
     skeleton = torch.tensor(skeleton)
     offsets = torch.tensor(offsets)
@@ -31,25 +32,26 @@ def read_file_ae(fname):
 def read_file_ms(fname):
     data = np.load(fname)
     # T-pose
-    skeleton = data["J"]
+    skeleton = data["J_t_local"]
     offsets = data["marker_configuration"]
-    skeleton = torch.tensor(skeleton)
-    offsets = torch.tensor(offsets)
+    skeleton = torch.tensor(skeleton, dtype=torch.float32)
+    offsets = torch.tensor(offsets, dtype=torch.float32)
 
     # markers
     raw_markers = data["raw_markers"]
-    raw_markers = torch.tensor(raw_markers)
+    raw_markers = torch.tensor(raw_markers, dtype=torch.float32)
 
     # get motion
     R = data["J_R_local"] # num_frames x j x 3 x 3
     root_t = data["J_t"][:, 0] # num_frames x 3
-    R = torch.tensor(R)
-    root_t = torch.tensor(root_t)
+    R = torch.tensor(R, dtype=torch.float32)
+    root_t = torch.tensor(root_t, dtype=torch.float32)
     motion_quat = matrix_to_quaternion(R) # num_frames x j x 4
     motion_quat = motion_quat.view(motion_quat.shape[0], -1)
     motion_quat = torch.cat((motion_quat, root_t), dim=-1)
+    global_xform = torch.tensor(np.concatenate([data["J_R"], data["J_t"][..., None]], axis=-1), dtype=torch.float32)
 
-    return offsets, skeleton, motion_quat, raw_markers
+    return offsets, skeleton, motion_quat, raw_markers, global_xform
 
 
 class AE_Dataset(Dataset):
@@ -87,8 +89,9 @@ class AE_Dataset(Dataset):
 
 
 class MS_Dataset(Dataset):
-    def __init__(self, data_dir, window_size=64):
+    def __init__(self, data_dir, window_size=64, local_ref_markers=[3, 7, 11, 21, 32, 36, 46, 54], local_ref_joint=3):
         self.window_size = window_size
+        self.local_ref_markers = local_ref_markers
         if isinstance(data_dir, list):
             fnames = data_dir
         else:
@@ -103,6 +106,10 @@ class MS_Dataset(Dataset):
         self.X_t = [m[1] for m in data]
         self.X_m = [m[2] for m in data]
         self.raw = [m[3] for m in data]
+
+        xform_ref_joint = [m[4][:, local_ref_joint] for m in data]
+        xform_inv_ref_joint = [xform_inv(m[4][:, local_ref_joint]).unsqueeze(1) for m in data]
+        self.local_ref_markers = [(xform_inv_ref_joint[i][...,:3] @ m[3][:, local_ref_markers, :, None] + xform_inv_ref_joint[i][...,3, None]).squeeze(-1) for i, m in enumerate(data)]
 
         self.indices = []
         for f_idx in range(len(self.X_m)):
@@ -120,9 +127,9 @@ class MS_Dataset(Dataset):
         raw_markers = self.raw[f_idx][pivot : pivot + self.window_size] # T x m x 3
 
         # TODO: normalize raw_markers using reference frame
-        ref_frame = raw_markers[0]
+        ref_frame = raw_markers[0, ]
 
-        return X_c, X_t, X_m
+        return X_c, X_t, X_m, self.local_ref_markers
 
 
 def test():
