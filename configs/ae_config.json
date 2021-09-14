@@ -1,0 +1,80 @@
+{
+    "project": "denoising",
+    "entity": "mocap",
+
+    "train_filenames": "data/synthetic_train.txt",
+    "val_filenames": "data/synthetic_train.txt",
+    "test_filenames": "data/synthetic_test.txt",
+
+    "logs_dir": "logs/ae_all/",
+    "model_dir": "logs/ae_all/model.pth",
+    "train_sum": "logs/ae_all/tensorboard/train",
+    "val_sum": "logs/ae_all/tensorboard/val",
+
+    "use_gpu": true,
+    "gpu_idx": 0,
+    "epochs": 75,
+    "batch_size": 512,
+    "window_size": 64,
+    "local_ref_joint": 3,
+    "local_ref_markers": [3, 7, 11, 21, 32, 36, 46, 54],
+    "threshold": 0.8,
+    "num_markers": 56,
+    "num_joints": 24,
+
+    "hierarchy": "dataset/hierarchy_synthetic_bfs.txt",
+    "joint_weights": [],
+    "weight_assignment": "dataset/weights.npy",
+
+    "model":{
+        "ae": {
+            "offset_dims": [72, 168]
+        },
+        "hidden_size":1024,
+        "num_layers": 4,
+        "train_decoder": true,
+        "decoder_dir": ""
+    },
+
+    "training_settings":{
+        "train_set": {
+            "sample": true,
+            "corrupt": true
+        },
+        "val_set": {
+            "sample": false,
+            "corrupt": true
+        }
+    },
+
+    "optimizer":{
+        "available": ["SGD", "Adam", "AmsGrad"],
+        "used": "SGD",
+        "SGD": {
+            "lr": 0.001,
+            "weight_decay": 0.01
+        },
+        "Adam": {
+            "lr": 0.001
+        },
+        "AmsGrad": {
+            "lr": 1e-4,
+            "weight_decay": 0.01
+        }
+    },
+
+    "lr_scheduler": {
+        "available": ["ExponentialLR", "MultiStepLR"],
+        "used": "ExponentialLR",
+        "ExponentialLR":{
+            "decay": 0.96
+        },
+        "MultiStepLR":{
+            "range": 12
+        }
+    },
+
+    "loss": {
+        "betas": [1, 100, 1, 2]
+    }
+}

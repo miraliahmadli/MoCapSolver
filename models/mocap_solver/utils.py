@@ -70,13 +70,11 @@ class MSBlock(nn.Module):
         dim: (Jx4 + 3)
 '''
 def split_raw_motion(raw_motion):
-    # raw: bs x (J * 4 + 3) x T
-    position = raw[:, -3:, :] # bs x 3 x T
-    position = position.permute(0, 2, 1) # bs x T x 3
-
-    rotation = raw[:, :-3, :] # bs x (J * 4) x T
-    rotation = rotation.view((rotation.shape[0], -1, 4, rotation.shape[-1])) # bs x J x 4 x T
-    rotation = rotation.permute(0, 3, 1, 2) # bs x T x J x 4
+    # raw_motion: bs x T x (J * 4 + 3)
+    bs, T, _ = raw_motion.shape
+    position = raw_motion[..., -3:] # bs x T x 3
+    rotation = raw_motion[..., :-3] # bs x T x (J * 4)
+    rotation = rotation.view(bs, T, -1, 4) # bs x T x J x 4
 
     return rotation, position
 
@@ -99,8 +97,9 @@ def FK(topology, rotation, offset, world=True):
 
 
 def LBS(w, Y_c, Y_t):
-    X = (Y_t.unsqueeze(0) + Y_c)*w # m x j x 3
-    X = X.sum(axis=1) # m x 3
+    X = Y_t.unsqueeze(-3) + Y_c # bs x m x j x 3
+    X *= w.unsqueeze(0).unsqueeze(-1)
+    X = X.sum(axis=-2) # m x 3
     return X
 
 
@@ -127,9 +126,9 @@ class Motion_loss(nn.Module):
 
 class Offset_loss(nn.Module):
     def __init__(self, marker_weights, joint_weights, b3, b4, weights):
-        super(Motion_loss, self).__init__()
-        self.b1 = b1
-        self.b2 = b2
+        super(Offset_loss, self).__init__()
+        self.b3 = b3
+        self.b4 = b4
         self.w = weights
         self.l1_crit = weighted_L1_loss(joint_weights, mode="mean")
         self.lbs_crit = weighted_L1_loss(marker_weights, mode="mean")
@@ -142,12 +141,12 @@ class Offset_loss(nn.Module):
 
 
 class AE_loss(nn.Module):
-    def __init__(self, marker_weights, joint_weights, betas, weight_assignment):
+    def __init__(self, joint_topology, edges, marker_weights, joint_weights, betas, weight_assignment):
         super(AE_loss, self).__init__()
         b1, b2, b3, b4 = betas
         self.crit_c = Offset_loss(1, 1, b3, b4, weight_assignment)
         self.crit_t = weighted_L1_loss(1, mode="mean")
-        self.crit_m = Motion_loss(1, b1, b2)
+        self.crit_m = Motion_loss(joint_topology, edges, 1, b1, b2)
 
     def forward(self, Y, X):
         Y_c, Y_t, Y_m = Y

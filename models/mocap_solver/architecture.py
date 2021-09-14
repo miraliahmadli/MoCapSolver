@@ -22,7 +22,7 @@ class AE(nn.Module):
     def forward(self, x_c, x_t, x_m):
         lat_c, lat_t, lat_m = self.encoder(x_c, x_t, x_m)
         Y_c, Y_t, Y_m = self.decoder(lat_c, lat_t, lat_m)
-        return lat_c, lat_t, lat_m, Y_c, Y_t, Y_m
+        return Y_c, Y_t, Y_m
 
 
 class MocapSolver(nn.Module):
@@ -110,6 +110,7 @@ def test_models():
     x_c = torch.rand(5, 56 * 24 * 3)
     x_m = torch.rand(5, len(joint_topology)*4 + 3, 64)
     x_t = torch.rand(5, len(joint_topology) * 3)
+    print(x_c.shape, x_t.shape, x_m.shape)
     auto_encoder = AE(edges, 56, 24, 1024, offset_dims=[24*3, 168],
                     offset_channels=[1, 8], offset_joint_num=[len(joint_topology), 7])
     outs = auto_encoder(x_c, x_t, x_m)
@@ -117,28 +118,28 @@ def test_models():
         print("\t", out.shape)
     print("\n----------------------------\n")
 
-    print("Mocap Solver")
-    num_markers = 56
-    window_size = 64
-    x = torch.rand(5, 64, 56, 3)
-    print("Input\n\t", x.shape)
-    ms = MocapSolver(num_markers, window_size, 1024,
-                    use_motion=True, use_marker_conf=True, use_skeleton=True)
-    res_ms = ms(x)
-    latent_c, latent_t, latent_m = res_ms
+    # print("Mocap Solver")
+    # num_markers = 56
+    # window_size = 64
+    # x = torch.rand(5, 64, 56, 3)
+    # print("Input\n\t", x.shape)
+    # ms = MocapSolver(num_markers, window_size, 1024,
+    #                 use_motion=True, use_marker_conf=True, use_skeleton=True)
+    # res_ms = ms(x)
+    # latent_c, latent_t, latent_m = res_ms
 
-    print("Results")
-    print("\tLatent vecotrs:")
-    for res in res_ms:
-        print("\t", res.shape)
+    # print("Results")
+    # print("\tLatent vecotrs:")
+    # for res in res_ms:
+    #     print("\t", res.shape)
 
-    dec = Decoder(auto_encoder.encoder)
-    latent_m = latent_m.view(latent_m.shape[0], 16, -1)
-    outs = dec(latent_c, latent_t, latent_m)
-    print("\tPredictions")
-    for out in outs:
-        print("\t", out.shape)
-    print("\n----------------------------\n")
+    # dec = Decoder(auto_encoder.encoder)
+    # latent_m = latent_m.view(latent_m.shape[0], 16, -1)
+    # outs = dec(latent_c, latent_t, latent_m)
+    # print("\tPredictions")
+    # for out in outs:
+    #     print("\t", out.shape)
+    # print("\n----------------------------\n")
 
 
 if __name__ == "__main__":
