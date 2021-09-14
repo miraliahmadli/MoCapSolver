@@ -79,27 +79,60 @@ def split_raw_motion(raw_motion):
     return rotation, position
 
 
-def FK(topology, rotation, offset, world=True):
-    result = torch.empty(rotation.shape[:-1] + (3, ), device=rotation.device) # bs x T x J x 3
-    transform = quaternion_to_matrix(rotation) # bs x T x J x 3 x 3
-    offset = offset.reshape((-1, 1, offset.shape[-2], offset.shape[-1], 1)) # bs x 1 x J x 3 x 1
-
+def FK(topology, X_m, X_t, world=True):
+    #rotation bs x T x (J * 4 + 3)
+    #offset bs x J x 3
+    global_tr = torch.empty(X_m.shape[:-1] + X_t.shape[1: ], device=X_m.device) # bs x T x J x 3
+    global_rot = quaternion_to_matrix(X_m[..., :-3].view(X_m[..., :-3].shape[:-1] + (-1, 4))) # bs x T x J x 3 x 3
+    X_t = X_t.reshape((-1, 1, X_t.shape[-2], X_t.shape[-1], 1)) # bs x 1 x J x 3 x 1
     for i, pi in enumerate(topology):
         if pi == -1:
             assert i == 0
-            result[..., i, :] = torch.matmul(transform[..., i, :, :], offset[..., i, :, :]).squeeze()
+            global_tr[..., i, :] = X_m[..., -3:] #Last 3 element in rotation is global position of the root
             continue
 
-        transform[..., i, :, :] = torch.matmul(transform[..., pi, :, :], transform[..., i, :, :])
-        result[..., i, :] = torch.matmul(transform[..., i, :, :], offset[..., i, :, :]).squeeze()
-        if world: result[..., i, :] += result[..., pi, :]
-    return result
+        global_rot[..., i, :, :] = torch.matmul(global_rot[..., pi, :, :], global_rot[..., i, :, :])
+        global_tr[..., i, :] = torch.matmul(global_rot[..., pi, :, :], X_t[..., i, :, :]).squeeze()
+        if world: global_tr[..., i, :] += global_tr[..., pi, :]
+    return global_rot, global_tr
 
 
-def LBS(w, Y_c, Y_t):
+def LBS_skel(w, Y_c, Y_t):
     X = Y_t.unsqueeze(-3) + Y_c # bs x m x j x 3
     X *= w.unsqueeze(0).unsqueeze(-1)
     X = X.sum(axis=-2) # m x 3
+    return X
+
+
+def LBS_motion(w, Y_c, xform_global):
+    '''
+    Linear Blend Skinning function
+​
+    Args:
+        w: weights associated with marker offsets, dim: (m, j)
+        Z: local offsets, dim: (n, m, j, 3)
+        Y: rotation + translation matrices, dim: (n, T, j, 3, 4)
+
+    Return:
+        X: global marker positions, dim: (n, T, m, 3)
+    '''
+    m, j = w.shape
+    n = Y_c.shape[0]
+
+    w_ = w.permute(1, 0) # j x m
+
+    z_padding = torch.ones((n, m, j, 1), device=w.device)
+    Z_ = torch.cat((Y_c, z_padding), axis=3)
+    Z_ = Z_.permute(2, 0, 3, 1).unsqueeze(2) # j x n x 1 x 4 x m
+
+    Y_ = xform_global.permute(2, 0, 1, 3, 4) # j x n x T x 3 x 4
+
+    prod = torch.matmul(Y_, Z_).permute(0, 4, 1, 2, 3) # j x m x n x T x 3
+
+    X = torch.sum(
+            torch.mul(prod, w_.view((j, m, 1, 1, 1))), 
+            axis=0).permute(1, 2, 0, 3) # n x m x 3
+
     return X
 
 
@@ -135,7 +168,7 @@ class Offset_loss(nn.Module):
 
     def forward(self, Y_c, X_c, Y_t, X_t):
         loss_c = self.b3 * self.l1_crit(Y_c, X_c)
-        loss_lbs = self.b4 * self.lbs_crit(LBS(self.w, Y_c, Y_t), LBS(self.w, X_c, X_t))
+        loss_lbs = self.b4 * self.lbs_crit(LBS_skel(self.w, Y_c, Y_t), LBS_skel(self.w, X_c, X_t))
         loss = loss_c + loss_lbs
         return loss
 
