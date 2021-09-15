@@ -62,20 +62,16 @@ class EncoderAgent(BaseAgent):
             
             Y_c, Y_t, Y_m = self.run_batch(X_c, X_t, X_m)
 
-            loss_c, loss_t, loss_m = self.criterion((X_c, X_t, X_m), (Y_c, Y_t, Y_m))
+            loss, loss_c, loss_t, loss_m = self.criterion((X_c, X_t, X_m), (Y_c, Y_t, Y_m))
             total_loss_c += loss_c.item()
             total_loss_t += loss_t.item()
             total_loss_m += loss_m.item()
-            loss = loss_c + loss_t + loss_m
 
             self.optimizer.zero_grad()
-            # loss_c.backward()
-            # loss_t.backward()
-            # loss_m.backward()
             loss.backward()
             self.optimizer.step()
 
-            tqdm_update = f"Epoch={epoch:04d},offset_loss={loss_c.item() / bs:.4f}, skeletal_loss={loss_t.item() / bs:.4f}, motion_loss={loss_m.item() / bs:.4f}"
+            tqdm_update = f"Epoch={epoch:04d}, offset_loss={loss_c.item() / bs:.4f}, skeletal_loss={loss_t.item() / bs:.4f}, motion_loss={loss_m.item() / bs:.4f}"
             tqdm_batch.set_postfix_str(tqdm_update)
             tqdm_batch.update()
 
@@ -110,12 +106,12 @@ class EncoderAgent(BaseAgent):
 
                 Y_c, Y_t, Y_m = self.run_batch(X_c, X_t, X_m)
 
-                loss_c, loss_t, loss_m = self.criterion((X_c, X_t, X_m), (Y_c, Y_t, Y_m))
+                loss, loss_c, loss_t, loss_m = self.criterion((X_c, X_t, X_m), (Y_c, Y_t, Y_m))
                 total_loss_c += loss_c.item()
                 total_loss_t += loss_t.item()
                 total_loss_m += loss_m.item()
 
-                tqdm_update = f"Epoch={epoch:04d},offset_loss={loss_c.item() / bs:.4f}, skeletal_loss={loss_t.item() / bs:.4f}, motion_loss={loss_m.item() / bs:.4f}"
+                tqdm_update = f"Epoch={epoch:04d}, offset_loss={loss_c.item() / bs:.4f}, skeletal_loss={loss_t.item() / bs:.4f}, motion_loss={loss_m.item() / bs:.4f}"
                 tqdm_batch.set_postfix_str(tqdm_update)
                 tqdm_batch.update()
 

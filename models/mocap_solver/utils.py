@@ -187,7 +187,8 @@ class AE_loss(nn.Module):
         loss_c = self.crit_c(Y_c, X_c, Y_t, X_t)
         loss_t = self.crit_t(Y_t, X_t)
         loss_m = self.crit_m(Y_m, X_m, Y_t, X_t)
-        return loss_c, loss_t, loss_m
+        loss = loss_c + loss_t + loss_m
+        return loss, loss_c, loss_t, loss_m
 
 
 class MS_loss(nn.Module):
@@ -200,12 +201,12 @@ class MS_loss(nn.Module):
         self.crit_m = weighted_L1_loss(1, mode="mean")
 
     def forward(self, Y, X):
-        Y_c, Y_t, Y_m = Y
-        X_c, X_t, X_m = X
-        # loss_marker = self.crit(Y_, X_)
+        Y_c, Y_t, Y_m, Y_ = Y
+        X_c, X_t, X_m, X_ = X
+        loss_marker = self.crit(Y_, X_)
         loss_c = self.crit_c(Y_c, X_c)
         loss_t = self.crit_t(Y_t, X_t)
         loss_m = self.crit_m(Y_m, X_m)
 
-        loss = self.a2 * loss_c + self.a3 * loss_t + self.a4 * loss_m #self.a1 * loss_marker
-        return loss
+        loss = self.a1 * loss_marker + self.a2 * loss_c + self.a3 * loss_t + self.a4 * loss_m
+        return loss, loss_c, loss_t, loss_m, loss_marker

@@ -41,6 +41,8 @@ def read_file_ms(fname):
     # markers
     raw_markers = data["raw_markers"]
     raw_markers = torch.tensor(raw_markers, dtype=torch.float32)
+    clean_markers = data["clean_markers"]
+    clean_markers = torch.tensor(clean_markers, dtype=torch.float32)
 
     # get motion
     R = data["J_R_local"] # num_frames x j x 3 x 3
@@ -52,7 +54,7 @@ def read_file_ms(fname):
     motion_quat = torch.cat((motion_quat, root_t), dim=-1)
     global_xform = torch.tensor(np.concatenate([data["J_R"], data["J_t"][..., None]], axis=-1), dtype=torch.float32)
 
-    return offsets, skeleton, motion_quat, raw_markers, global_xform
+    return offsets, skeleton, motion_quat, raw_markers, global_xform, clean_markers
 
 
 class AE_Dataset(Dataset):
@@ -107,6 +109,7 @@ class MS_Dataset(Dataset):
         self.X_t = [m[1] for m in data]
         self.X_m = [m[2] for m in data]
         self.raw = [m[3] for m in data]
+        self.clean = [m[5] for m in data]
 
         xform_ref_joint = [m[4][:, local_ref_joint] for m in data]
         xform_inv_ref_joint = [xform_inv(m[4][:, local_ref_joint]).unsqueeze(1) for m in data]
@@ -126,6 +129,7 @@ class MS_Dataset(Dataset):
         X_t = self.X_t[f_idx] # j x 3
         X_m = self.X_m[f_idx][pivot : pivot + self.window_size] # T x (J*4 + 3)
         raw_markers = self.raw[f_idx][pivot : pivot + self.window_size] # T x m x 3
+        clean_markers = self.clean[f_idx][pivot : pivot + self.window_size]
         ref_marker_pos = self.ref_marker_pos[f_idx][pivot]
 
         F = local_frame_F(raw_markers, ref_marker_pos.unsqueeze(1), self.local_ref_markers)
@@ -133,7 +137,7 @@ class MS_Dataset(Dataset):
         nans = ~((raw_markers != 0.0).any(axis=-1))
         raw_markers_normalized = F_inv[..., :3].unsqueeze(1) @ raw_markers[..., None] + F_inv[..., 3, None].unsqueeze(1)
         raw_markers_normalized[nans] = torch.zeros((3,1)).to(torch.float32)
-        return X_c, X_t, X_m, raw_markers_normalized.squeeze(-1), F
+        return X_c, X_t, X_m, raw_markers_normalized.squeeze(-1), clean_markers, F
 
 
 def test():
