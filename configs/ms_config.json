@@ -23,7 +23,9 @@
     "num_joints": 24,
 
     "hierarchy": "dataset/hierarchy_synthetic_bfs.txt",
-    "joint_weights": [],
+    "joint_weights": [4, 6, 6, 4, 6, 6, 4, 10, 10, 4, 10, 10, 8, 4, 4, 8, 4, 4, 6, 6, 10, 10, 10, 10],
+    "marker_weights": [8, 4, 4, 4, 6, 8, 4, 4, 6, 8, 4, 4, 10, 6, 4, 10, 6, 6, 6, 10, 10, 4, 10, 10, 6, 10, 4, 4, 6, 6, 8, 4, 4, 6, 8, 4, 4, 10, 6, 4, 10, 10, 6, 6, 10, 10, 4, 10, 6, 6, 10, 4, 4, 6, 4, 4],
+    "offset_weights": "dataset/offset_weights.npy",
     "weight_assignment": "dataset/weights.npy",
 
     "model":{

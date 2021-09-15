@@ -10,7 +10,7 @@ from models import AE, MocapSolver, MS_loss
 from models.mocap_solver import Decoder, MSD, FK, LBS_motion
 from models.mocap_solver.skeleton import get_topology, build_edge_topology
 from datasets.mocap_solver import MS_Dataset
-from tools.transform import quaternion_to_matrix, matrix_to_axis_angle
+from tools.transform import quaternion_to_matrix, matrix_to_axis_angle, matrix_to_quaternion
 
 
 class MS_Agent(BaseAgent):
@@ -18,9 +18,10 @@ class MS_Agent(BaseAgent):
         super(MS_Agent, self).__init__(cfg, test, sweep)
         torch.autograd.set_detect_anomaly(True)
         self.train_decoder = cfg.model.train_decoder
-        # self.joint_weights = torch.tensor(cfg.joint_weights, dtype=torch.float32, device=self.device)
-        self.joint_weights = torch.tensor([1]*self.num_joints, dtype=torch.float32, device=self.device)
-        self.marker_weights = torch.tensor([1]*self.num_markers, dtype=torch.float32, device=self.device)
+        self.joint_weights = torch.tensor(cfg.joint_weights, dtype=torch.float32, device=self.device).view(-1, 1)
+        self.marker_weights = torch.tensor(cfg.marker_weights, dtype=torch.float32, device=self.device).view(-1, 1)
+        self.offset_weights = torch.tensor(np.load(cfg.offset_weights), dtype=torch.float32, device=self.device)
+        self.offset_weights = self.offset_weights.view(*self.offset_weights.shape, 1)
         self.skinning_w = torch.tensor(np.load(cfg.weight_assignment), dtype=torch.float32, device=self.device)
 
         self.alphas = cfg.loss.alphas
@@ -55,15 +56,18 @@ class MS_Agent(BaseAgent):
         self.val_steps = len(self.val_dataset) // self.batch_size
 
         self.train_data_loader = DataLoader(self.train_dataset, batch_size=self.batch_size,\
-                                            shuffle=True, num_workers=8, pin_memory=True)
+                                            shuffle=False, num_workers=8, pin_memory=True)
         self.val_data_loader = DataLoader(self.val_dataset, batch_size=self.batch_size,\
                                             shuffle=False, num_workers=8, pin_memory=True)
 
-    def run_batch(self, X, F):
+    def run_batch(self, X, F, X_m):
         Y_c, Y_t, Y_m = self.model(X)
 
+        quat_F = matrix_to_quaternion(F[..., :3])
+        X_m[..., :4] = quat_F
+        X_m[..., -3:] -= F[..., -1]
         # skinning
-        j_rot, j_tr = FK(self.joint_topology, Y_m, Y_t)
+        j_rot, j_tr = FK(self.joint_topology, X_m, Y_t)
         j_xform = torch.cat([j_rot, j_tr.unsqueeze(-1)], dim=-1)
         Y = LBS_motion(self.skinning_w, Y_c, j_xform)
 
@@ -72,6 +76,16 @@ class MS_Agent(BaseAgent):
         Y_denorm = F[..., :3].unsqueeze(2) @ Y[..., None] + F[..., 3, None].unsqueeze(2)
         Y_denorm[nans] = torch.zeros((3,1)).to(torch.float32).to(self.device)
         Y_denorm = Y_denorm.squeeze(-1)
+        print(Y.shape, Y_denorm.shape)
+        print(j_xform.shape)
+        print(F.shape)
+        from tools.viz import visualize
+        # from tools.utils import xform_to_mat44
+        # root_44 = xform_to_mat44(j_xform[:, :, 0])
+        # j_xform[:, :, 0] = (F @ root_44)
+        # visualize(Xs=10*Y[0].detach().cpu().numpy()[..., [0, 2, 1]])
+        visualize(Ys=10*j_xform[0].detach().cpu().numpy()[..., [0, 2, 1], :])
+        exit()
 
         return Y_c, Y_t, Y_m, Y_denorm
 
@@ -92,11 +106,11 @@ class MS_Agent(BaseAgent):
             X, F, X_clean = X.to(torch.float32).to(self.device), F.to(torch.float32).to(self.device), X_clean.to(torch.float32).to(self.device)
             X_c, X_t, X_m = X_c.to(torch.float32).to(self.device), X_t.to(torch.float32).to(self.device),  X_m.to(torch.float32).to(self.device)
 
-            Y_c, Y_t, Y_m, Y_denorm = self.run_batch(X, F)
+            Y_c, Y_t, Y_m, Y_denorm = self.run_batch(X, F, X_m)
 
             losses = self.criterion((Y_c, Y_t, Y_m, Y_denorm), (X_c, X_t, X_m, X_clean))
             loss, loss_c, loss_t, loss_m, loss_marker = losses
-            total_loss += loss.item()
+            total_loss += loss.item() * bs
 
             self.optimizer.zero_grad()
             loss.backward()
@@ -111,13 +125,14 @@ class MS_Agent(BaseAgent):
             angle_diff = axis_angle[..., -1] / np.pi * 180 # n x t x j
             total_angle_err += torch.sum(torch.abs(angle_diff)) / (self.window_size * self.num_joints)
 
-            jp_err = torch.norm(X_t - Y_t, 2, dim=-1) # n x j
+            jp_err = torch.norm(X_t.detach().clone() - Y_t.detach().clone(), 2, dim=-1) # n x j
             total_jp_err += jp_err.sum() / self.num_joints
 
-            mp_err = torch.norm(X_clean.view(-1, self.num_markers, 3) - Y_denorm.view(-1, self.num_markers, 3), 2, dim=-1) # (n x t) x m
+            mp_err = torch.norm(X_clean.detach().clone().view(-1, self.num_markers, 3) - Y_denorm.detach().clone().view(-1, self.num_markers, 3), 2, dim=-1) # (n x t) x m
             total_mp_err += mp_err.sum() / (self.num_markers * self.window_size)
 
-            tqdm_update = "Epoch={0:04d}, loss={1:.4f}, angle_diff={2:.4f}, jpe={3:.4f}, mpe={4:4f}".format(epoch, 1000*loss.item() / bs, torch.abs(angle_diff).mean(), jp_err.mean(), mp_err.mean())
+            # tqdm_update = "Epoch={0:04d}, loss={1:.4f}, angle_diff={2:.4f}, jpe={3:.4f}, mpe={4:4f}".format(epoch, 1000*loss.item() / bs, torch.abs(angle_diff).mean(), jp_err.mean(), mp_err.mean())
+            tqdm_update = "Epoch={0:04d}, loss={1:.4f}, loss_c={2:.4f}, loss_t={3:.4f}, loss_m={4:4f}, loss_marker={5:4f}".format(epoch, loss.item(), loss_c.item(), loss_t.item(), loss_m.item(), loss_marker.item())
             tqdm_batch.set_postfix_str(tqdm_update)
             tqdm_batch.update()
 
@@ -128,7 +143,7 @@ class MS_Agent(BaseAgent):
         # self.write_summary(self.val_writer, total_loss, epoch)
         # self.wandb_summary(False, total_loss, epoch)
 
-        tqdm_update = "Train: Epoch={0:04d}, loss={1:.4f}, angle_err={2:4f}, jpe={3:4f}, mpe={4:4f}".format(epoch, 1000*total_loss, total_angle_err, total_jp_err, total_mp_err)
+        tqdm_update = "Train: Epoch={0:04d}, loss={1:.4f}, angle_err={2:4f}, jpe={3:4f}, mpe={4:4f}".format(epoch, total_loss, total_angle_err, total_jp_err, total_mp_err)
         tqdm_batch.set_postfix_str(tqdm_update)
         tqdm_batch.update()
         tqdm_batch.close()
@@ -157,7 +172,7 @@ class MS_Agent(BaseAgent):
                 Y_c, Y_t, Y_m, Y_denorm = self.run_batch(X, F)
                 losses = self.criterion((Y_c, Y_t, Y_m, Y_denorm), (X_c, X_t, X_m, X_clean))
                 loss, loss_c, loss_t, loss_m, loss_marker = losses
-                total_loss += loss.item()
+                total_loss += loss.item() * bs
 
                 quat_X = X_m[...,:-3].detach().clone().view(bs, self.window_size, self.num_joints, 4)
                 quat_Y = Y_m[...,:-3].detach().clone().view(bs, self.window_size, self.num_joints, 4)
@@ -168,13 +183,14 @@ class MS_Agent(BaseAgent):
                 angle_diff = axis_angle[..., -1] / np.pi * 180 # (n x t) x j
                 total_angle_err += torch.sum(torch.abs(angle_diff)) / (self.window_size * self.num_joints)
 
-                jp_err = torch.norm(X_t - Y_t, 2, dim=-1) # n x j
+                jp_err = torch.norm(X_t.detach().clone() - Y_t.detach().clone(), 2, dim=-1) # n x j
                 total_jp_err += jp_err.sum() / self.num_joints
 
-                mp_err = torch.norm(X_clean.view(-1, self.num_markers, 3) - Y_denorm.view(-1, self.num_markers, 3), 2, dim=-1) # (n x t) x m
+                mp_err = torch.norm(X_clean.detach().clone().view(-1, self.num_markers, 3) - Y_denorm.detach().clone().view(-1, self.num_markers, 3), 2, dim=-1) # (n x t) x m
                 total_mp_err += mp_err.sum() / (self.num_markers * self.window_size)
 
-                tqdm_update = "Epoch={0:04d}, loss={1:.4f}, angle_diff={2:.4f}, mpe={4:4f}".format(epoch, 1000*loss.item() / bs, torch.abs(angle_diff).mean(), jp_err.mean(), mp_err.mean())
+                # tqdm_update = "Epoch={0:04d}, loss={1:.4f}, angle_diff={2:.4f}, mpe={4:4f}".format(epoch, loss.item(), torch.abs(angle_diff).mean(), jp_err.mean(), mp_err.mean())
+                tqdm_update = "Epoch={0:04d}, loss={1:.4f}, loss_c={2:.4f}, loss_t={3:.4f}, loss_m={4:4f}, loss_marker={5:4f}".format(epoch, loss.item(), loss_c.item(), loss_t.item(), loss_m.item(), loss_marker.item())
                 tqdm_batch.set_postfix_str(tqdm_update)
                 tqdm_batch.update()
 
@@ -185,7 +201,7 @@ class MS_Agent(BaseAgent):
         # self.write_summary(self.val_writer, total_loss, epoch)
         # self.wandb_summary(False, total_loss, epoch)
 
-        tqdm_update = "Val  : Epoch={0:04d},loss={1:.4f}, angle_err={2:4f}, jpe={3:4f}, mpe={4:4f}".format(epoch, 1000*total_loss, total_angle_err, total_jp_err, total_mp_err)
+        tqdm_update = "Val  : Epoch={0:04d},loss={1:.4f}, angle_err={2:4f}, jpe={3:4f}, mpe={4:4f}".format(epoch, total_loss, total_angle_err, total_jp_err, total_mp_err)
         tqdm_batch.set_postfix_str(tqdm_update)
         tqdm_batch.update()
         tqdm_batch.close()
@@ -197,7 +213,7 @@ class MS_Agent(BaseAgent):
         pass
 
     def build_loss_function(self):
-        return MS_loss(self.joint_weights, self.marker_weights, self.alphas)
+        return MS_loss(self.joint_weights, self.marker_weights, self.offset_weights, self.alphas)
 
     def load_decoder(self, decoder_dir):
         ckpt = torch.load(decoder_dir)

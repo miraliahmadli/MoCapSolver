@@ -117,7 +117,7 @@ class MS_Dataset(Dataset):
 
         self.indices = []
         for f_idx in range(len(self.X_m)):
-            sublist = [(f_idx, pivot) for pivot in range(self.X_m[f_idx].shape[0] - self.window_size)]
+            sublist = [(f_idx, pivot) for pivot in range(0, self.X_m[f_idx].shape[0] - self.window_size, self.window_size // 2)]
             self.indices += sublist
 
     def __len__(self):
