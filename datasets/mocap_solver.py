@@ -158,7 +158,6 @@ class MS_Dataset(Dataset):
         raw_markers_normalized = F_inv[..., :3].unsqueeze(1) @ raw_markers[..., None] + F_inv[..., 3, None].unsqueeze(1)
         raw_markers_normalized[nans] = torch.zeros((3,1)).to(torch.float32)
         clean_markers_norm = F_inv[..., :3].unsqueeze(1) @ clean_markers[..., None] + F_inv[..., 3, None].unsqueeze(1)
-        clean_markers_norm[nans] = torch.zeros((3,1)).to(torch.float32)
         return X_c, X_t, X_m, raw_markers_normalized.squeeze(-1), clean_markers_norm.squeeze(-1), F#, root_quat, root[..., -1]
 
 
