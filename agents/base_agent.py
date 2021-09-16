@@ -117,7 +117,7 @@ class BaseAgent(ABC):
         if optimizer == "adam":
             return torch.optim.Adam(self.model.parameters(), lr=self.cfg.optimizer.Adam.lr)
         elif optimizer == "sgd":
-            return torch.optim.SGD(self.model.parameters(), lr=self.cfg.optimizer.SGD.lr)
+            return torch.optim.SGD(self.model.parameters(), lr=self.cfg.optimizer.SGD.lr, weight_decay=self.cfg.optimizer.SGD.weight_decay)
         elif optimizer == "amsgrad":
             return torch.optim.Adam(self.model.parameters(), lr=self.cfg.optimizer.AmsGrad.lr,
                                     weight_decay=self.cfg.optimizer.AmsGrad.weight_decay, amsgrad=True)

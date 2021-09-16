@@ -11,6 +11,7 @@ from models.mocap_solver import Decoder, MSD, FK, LBS_motion
 from models.mocap_solver.skeleton import get_topology, build_edge_topology
 from datasets.mocap_solver import MS_Dataset
 from tools.transform import quaternion_to_matrix, matrix_to_axis_angle, matrix_to_quaternion
+from tools.utils import xform_to_mat44
 
 
 class MS_Agent(BaseAgent):
@@ -60,34 +61,32 @@ class MS_Agent(BaseAgent):
         self.val_data_loader = DataLoader(self.val_dataset, batch_size=self.batch_size,\
                                             shuffle=False, num_workers=8, pin_memory=True)
 
-    def run_batch(self, X, F, X_m):
+    def run_batch(self, X, F):
         Y_c, Y_t, Y_m = self.model(X)
 
-        quat_F = matrix_to_quaternion(F[..., :3])
-        X_m[..., :4] = quat_F
-        X_m[..., -3:] -= F[..., -1]
         # skinning
-        j_rot, j_tr = FK(self.joint_topology, X_m, Y_t)
+        j_rot, j_tr = FK(self.joint_topology, Y_m, Y_t)
         j_xform = torch.cat([j_rot, j_tr.unsqueeze(-1)], dim=-1)
         Y = LBS_motion(self.skinning_w, Y_c, j_xform)
 
-        # denorm
-        nans = ~((Y != 0.0).any(axis=-1))
-        Y_denorm = F[..., :3].unsqueeze(2) @ Y[..., None] + F[..., 3, None].unsqueeze(2)
-        Y_denorm[nans] = torch.zeros((3,1)).to(torch.float32).to(self.device)
-        Y_denorm = Y_denorm.squeeze(-1)
-        print(Y.shape, Y_denorm.shape)
-        print(j_xform.shape)
-        print(F.shape)
-        from tools.viz import visualize
-        # from tools.utils import xform_to_mat44
-        # root_44 = xform_to_mat44(j_xform[:, :, 0])
-        # j_xform[:, :, 0] = (F @ root_44)
-        # visualize(Xs=10*Y[0].detach().cpu().numpy()[..., [0, 2, 1]])
-        visualize(Ys=10*j_xform[0].detach().cpu().numpy()[..., [0, 2, 1], :])
-        exit()
+        # j_rot_gt, j_tr_gt = FK(self.joint_topology, X_m, X_t)
+        # j_xform_gt = torch.cat([j_rot_gt, j_tr_gt.unsqueeze(-1)], dim=-1)
 
-        return Y_c, Y_t, Y_m, Y_denorm
+        # denorm
+        # nans = ~((Y != 0.0).any(axis=-1))
+        # Y_denorm = F[..., :3].unsqueeze(2) @ Y[..., None] + F[..., 3, None].unsqueeze(2)
+        # Y_denorm[nans] = torch.zeros((3,1)).to(torch.float32).to(self.device)
+        # Y_denorm = Y_denorm.squeeze(-1)
+
+        # from tools.viz import visualize
+        # visualize(Xs=10*Y[0].detach().cpu().numpy()[..., [0, 2, 1]])
+        # Ys = 10 * torch.cat((j_xform[:1], j_xform_gt[:1]), 0).detach().cpu().numpy()
+        # visualize(Ys=Ys)
+        # Xs = 10 * torch.cat((Y[:1], X[:1]), 0).detach().cpu().numpy()
+        # visualize(Xs=Xs, fps_vid=120, colors_X=[[0, 255, 0], [0, 0, 255]])
+        # exit()
+
+        return Y_c, Y_t, Y_m, Y
 
     def train_per_epoch(self, epoch):
         tqdm_batch = tqdm(total=self.train_steps, dynamic_ncols=True) 
@@ -106,9 +105,9 @@ class MS_Agent(BaseAgent):
             X, F, X_clean = X.to(torch.float32).to(self.device), F.to(torch.float32).to(self.device), X_clean.to(torch.float32).to(self.device)
             X_c, X_t, X_m = X_c.to(torch.float32).to(self.device), X_t.to(torch.float32).to(self.device),  X_m.to(torch.float32).to(self.device)
 
-            Y_c, Y_t, Y_m, Y_denorm = self.run_batch(X, F, X_m)
+            Y_c, Y_t, Y_m, Y = self.run_batch(X, F)
 
-            losses = self.criterion((Y_c, Y_t, Y_m, Y_denorm), (X_c, X_t, X_m, X_clean))
+            losses = self.criterion((Y_c, Y_t, Y_m, Y), (X_c, X_t, X_m, X_clean))
             loss, loss_c, loss_t, loss_m, loss_marker = losses
             total_loss += loss.item() * bs
 
@@ -128,7 +127,7 @@ class MS_Agent(BaseAgent):
             jp_err = torch.norm(X_t.detach().clone() - Y_t.detach().clone(), 2, dim=-1) # n x j
             total_jp_err += jp_err.sum() / self.num_joints
 
-            mp_err = torch.norm(X_clean.detach().clone().view(-1, self.num_markers, 3) - Y_denorm.detach().clone().view(-1, self.num_markers, 3), 2, dim=-1) # (n x t) x m
+            mp_err = torch.norm(X_clean.detach().clone().view(-1, self.num_markers, 3) - Y.detach().clone().view(-1, self.num_markers, 3), 2, dim=-1) # (n x t) x m
             total_mp_err += mp_err.sum() / (self.num_markers * self.window_size)
 
             # tqdm_update = "Epoch={0:04d}, loss={1:.4f}, angle_diff={2:.4f}, jpe={3:.4f}, mpe={4:4f}".format(epoch, 1000*loss.item() / bs, torch.abs(angle_diff).mean(), jp_err.mean(), mp_err.mean())
@@ -169,8 +168,8 @@ class MS_Agent(BaseAgent):
                 X, F, X_clean = X.to(torch.float32).to(self.device), F.to(torch.float32).to(self.device), X_clean.to(torch.float32).to(self.device)
                 X_c, X_t, X_m = X_c.to(torch.float32).to(self.device), X_t.to(torch.float32).to(self.device),  X_m.to(torch.float32).to(self.device)
 
-                Y_c, Y_t, Y_m, Y_denorm = self.run_batch(X, F)
-                losses = self.criterion((Y_c, Y_t, Y_m, Y_denorm), (X_c, X_t, X_m, X_clean))
+                Y_c, Y_t, Y_m, Y = self.run_batch(X, F)
+                losses = self.criterion((Y_c, Y_t, Y_m, Y), (X_c, X_t, X_m, X_clean))
                 loss, loss_c, loss_t, loss_m, loss_marker = losses
                 total_loss += loss.item() * bs
 
@@ -186,7 +185,7 @@ class MS_Agent(BaseAgent):
                 jp_err = torch.norm(X_t.detach().clone() - Y_t.detach().clone(), 2, dim=-1) # n x j
                 total_jp_err += jp_err.sum() / self.num_joints
 
-                mp_err = torch.norm(X_clean.detach().clone().view(-1, self.num_markers, 3) - Y_denorm.detach().clone().view(-1, self.num_markers, 3), 2, dim=-1) # (n x t) x m
+                mp_err = torch.norm(X_clean.detach().clone().view(-1, self.num_markers, 3) - Y.detach().clone().view(-1, self.num_markers, 3), 2, dim=-1) # (n x t) x m
                 total_mp_err += mp_err.sum() / (self.num_markers * self.window_size)
 
                 # tqdm_update = "Epoch={0:04d}, loss={1:.4f}, angle_diff={2:.4f}, mpe={4:4f}".format(epoch, loss.item(), torch.abs(angle_diff).mean(), jp_err.mean(), mp_err.mean())
