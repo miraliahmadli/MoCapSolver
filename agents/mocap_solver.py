@@ -140,7 +140,7 @@ class MS_Agent(BaseAgent):
         total_jp_err /= n
         total_mp_err /= n
         # self.write_summary(self.val_writer, total_loss, epoch)
-        # self.wandb_summary(False, total_loss, epoch)
+        self.wandb_summary(True, total_loss, epoch)
 
         tqdm_update = "Train: Epoch={0:04d}, loss={1:.4f}, angle_err={2:4f}, jpe={3:4f}, mpe={4:4f}".format(epoch, total_loss, total_angle_err, total_jp_err, total_mp_err)
         tqdm_batch.set_postfix_str(tqdm_update)
@@ -198,7 +198,7 @@ class MS_Agent(BaseAgent):
         total_jp_err /= n
         total_mp_err /= n
         # self.write_summary(self.val_writer, total_loss, epoch)
-        # self.wandb_summary(False, total_loss, epoch)
+        self.wandb_summary(False, total_loss, total_angle_err, total_jp_err, total_mp_err)
 
         tqdm_update = "Val  : Epoch={0:04d},loss={1:.4f}, angle_err={2:4f}, jpe={3:4f}, mpe={4:4f}".format(epoch, total_loss, total_angle_err, total_jp_err, total_mp_err)
         tqdm_batch.set_postfix_str(tqdm_update)
@@ -218,3 +218,15 @@ class MS_Agent(BaseAgent):
         ckpt = torch.load(decoder_dir)
         self.ms_decoder.load_state_dict(ckpt['decoder'])
         self.ms_decoder.freeze_params() # freeze params to avoid backprop
+
+    def wandb_summary(self, training, total_loss, total_angle_err, total_jp_err, total_mp_err):
+        if not training:
+            wandb.log({'Validation Loss': total_loss})
+            wandb.log({'Validation Angle Error (deg)': total_angle_err})
+            wandb.log({'Validation Joint Position Error (mm)': total_jp_err})
+            wandb.log({'Validation Marker Position Error (mm)': total_mp_err})
+        else:
+            wandb.log({'Training Loss': total_loss})
+            wandb.log({'Training Angle Error (deg)': total_angle_err})
+            wandb.log({'Training Joint Position Error (mm)': total_jp_err})
+            wandb.log({'Training Marker Position Error (mm)': total_mp_err})
