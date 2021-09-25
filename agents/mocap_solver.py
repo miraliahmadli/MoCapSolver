@@ -1,4 +1,5 @@
 import os
+import wandb
 from tqdm import tqdm
 import numpy as np
 import torch
@@ -57,11 +58,11 @@ class MS_Agent(BaseAgent):
         self.val_steps = len(self.val_dataset) // self.batch_size
 
         self.train_data_loader = DataLoader(self.train_dataset, batch_size=self.batch_size,\
-                                            shuffle=False, num_workers=8, pin_memory=True)
+                                            shuffle=True, num_workers=8, pin_memory=True)
         self.val_data_loader = DataLoader(self.val_dataset, batch_size=self.batch_size,\
                                             shuffle=False, num_workers=8, pin_memory=True)
 
-    def run_batch(self, X, F):
+    def run_batch(self, X, F, test=False):
         Y_c, Y_t, Y_m = self.model(X)
 
         # skinning
@@ -69,6 +70,28 @@ class MS_Agent(BaseAgent):
         j_xform = torch.cat([j_rot, j_tr.unsqueeze(-1)], dim=-1)
         Y = LBS_motion(self.skinning_w, Y_c, j_xform)
 
+        if test:
+            bs = X.shape[0]
+            X_all = torch.zeros((bs + 1, self.window_size // 2, self.num_markers, 3), device=X.device, dtype=torch.float32)
+            X_all[0] = Y[0, :self.window_size // 2]
+            X_all[-1] = Y[-1, -self.window_size // 2:]
+            for i in range(1, bs):
+                X_all[i] = (Y[i-1, -self.window_size // 2: ] + Y[i, :self.window_size // 2]) / 2
+            X_all = X_all.view(-1, self.num_markers, 3)
+
+
+            X_all_gt = torch.zeros((bs + 1, self.window_size // 2, self.num_markers, 3), device=X.device, dtype=torch.float32)
+            X_all_gt[0] = X[0, :self.window_size // 2]
+            X_all_gt[-1] = X[-1, -self.window_size // 2:]
+            for i in range(1, bs):
+                X_all_gt[i] = (X[i-1, -self.window_size // 2: ] + X[i, :self.window_size // 2]) / 2
+            X_all_gt = X_all_gt.view(-1, self.num_markers, 3)
+            Xs = 10 * torch.cat((X_all_gt.unsqueeze(0), X_all.unsqueeze(0)), 0).detach().cpu().numpy()
+            print(bs)
+            print(X_all.shape, X_all_gt.shape)
+            from tools.viz import visualize
+            visualize(Xs=Xs, fps_vid=120, colors_X=[[0, 255, 0], [0, 0, 255]])
+            exit()
         # j_rot_gt, j_tr_gt = FK(self.joint_topology, X_m, X_t)
         # j_xform_gt = torch.cat([j_rot_gt, j_tr_gt.unsqueeze(-1)], dim=-1)
 
@@ -78,13 +101,12 @@ class MS_Agent(BaseAgent):
         # Y_denorm[nans] = torch.zeros((3,1)).to(torch.float32).to(self.device)
         # Y_denorm = Y_denorm.squeeze(-1)
 
-        # from tools.viz import visualize
-        # visualize(Xs=10*Y[0].detach().cpu().numpy()[..., [0, 2, 1]])
+        from tools.viz import visualize
         # Ys = 10 * torch.cat((j_xform[:1], j_xform_gt[:1]), 0).detach().cpu().numpy()
         # visualize(Ys=Ys)
-        # Xs = 10 * torch.cat((Y[:1], X[:1]), 0).detach().cpu().numpy()
-        # visualize(Xs=Xs, fps_vid=120, colors_X=[[0, 255, 0], [0, 0, 255]])
-        # exit()
+        Xs = 10 * torch.cat((Y[:1], X[:1]), 0).detach().cpu().numpy()
+        visualize(Xs=Xs, fps_vid=120, colors_X=[[0, 255, 0], [0, 0, 255]])
+        exit()
 
         return Y_c, Y_t, Y_m, Y
 
@@ -140,7 +162,7 @@ class MS_Agent(BaseAgent):
         total_jp_err /= n
         total_mp_err /= n
         # self.write_summary(self.val_writer, total_loss, epoch)
-        self.wandb_summary(True, total_loss, epoch)
+        self.wandb_summary(True, total_loss, total_angle_err, total_jp_err, total_mp_err)
 
         tqdm_update = "Train: Epoch={0:04d}, loss={1:.4f}, angle_err={2:4f}, jpe={3:4f}, mpe={4:4f}".format(epoch, total_loss, total_angle_err, total_jp_err, total_mp_err)
         tqdm_batch.set_postfix_str(tqdm_update)
@@ -209,7 +231,37 @@ class MS_Agent(BaseAgent):
         return total_loss, message
 
     def test_one_animation(self):
-        pass
+        self.test_dataset = MS_Dataset(data_dir=self.cfg.test_filenames, window_size=self.window_size, 
+                                    local_ref_markers=self.cfg.local_ref_markers, local_ref_joint=self.cfg.local_ref_joint)
+
+        self.test_steps = len(self.test_dataset)
+
+        self.test_data_loader = DataLoader(self.test_dataset, batch_size=self.batch_size, \
+                                            shuffle=False, num_workers=8)
+
+        self.build_model()
+        self.model.to(self.device)
+        self.criterion = self.build_loss_function()
+
+        if os.path.exists(self.checkpoint_dir):
+            self.load_model()
+        else:
+            print("There is no saved model")
+            exit()
+
+        self.model.eval()
+        with torch.no_grad():
+            for batch_idx, (X_c, X_t, X_m, X, X_clean, F) in enumerate(self.test_data_loader):
+                # bs = X_c.shape[0]
+                # n += bs
+                X, F, X_clean = X.to(torch.float32).to(self.device), F.to(torch.float32).to(self.device), X_clean.to(torch.float32).to(self.device)
+                X_c, X_t, X_m = X_c.to(torch.float32).to(self.device), X_t.to(torch.float32).to(self.device),  X_m.to(torch.float32).to(self.device)
+
+                Y_c, Y_t, Y_m, Y = self.run_batch(X, F, test=True)
+                # losses = self.criterion((Y_c, Y_t, Y_m, Y), (X_c, X_t, X_m, X_clean))
+                # loss, loss_c, loss_t, loss_m, loss_marker = losses
+                # total_loss += loss.item() * bs
+
 
     def build_loss_function(self):
         return MS_loss(self.joint_weights, self.marker_weights, self.offset_weights, self.alphas)
@@ -223,10 +275,10 @@ class MS_Agent(BaseAgent):
         if not training:
             wandb.log({'Validation Loss': total_loss})
             wandb.log({'Validation Angle Error (deg)': total_angle_err})
-            wandb.log({'Validation Joint Position Error (mm)': total_jp_err})
-            wandb.log({'Validation Marker Position Error (mm)': total_mp_err})
+            wandb.log({'Validation Joint Position Error (mm)': 1000*total_jp_err})
+            wandb.log({'Validation Marker Position Error (mm)': 1000*total_mp_err})
         else:
             wandb.log({'Training Loss': total_loss})
             wandb.log({'Training Angle Error (deg)': total_angle_err})
-            wandb.log({'Training Joint Position Error (mm)': total_jp_err})
-            wandb.log({'Training Marker Position Error (mm)': total_mp_err})
+            wandb.log({'Training Joint Position Error (mm)': 1000*total_jp_err})
+            wandb.log({'Training Marker Position Error (mm)': 1000*total_mp_err})
