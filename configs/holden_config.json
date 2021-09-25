@@ -1,0 +1,78 @@
+{
+    "project": "denoising",
+    "entity": "mocap",
+    
+    "joint_to_marker": "dataset/joint_to_marker_paper.txt",
+    "csv_file": "dataset/meta_data.csv",
+    "lrf_mean_markers": "dataset/LRF_mean_offsets.npy",
+
+    "train_filenames": "data/train.txt",
+    "val_filenames": "data/valid.txt",
+    "test_filenames": "data/test.txt",
+
+    "logs_dir": "logs/sj/",
+    "model_dir": "logs/sj/model.pth",
+    "train_sum": "logs/sj/tensorboard/train",
+    "val_sum": "logs/sj/tensorboard/val",
+
+    "use_gpu": true,
+    "gpu_idx": 0,
+    "epochs": 70,
+    "batch_size": 512,
+    "num_markers": 41,
+    "num_joints": 31,
+    "user_weights_rotation": [1.0, 1.0, 1.0, 1.0, 0.5, 0.25, 1.0, 1.0, 1.0, 0.5, 0.25, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.25, 0.25, 0.25, 0.25, 1.0, 1.0, 1.0, 0.25, 0.25, 0.25, 0.25],
+    "user_weights_translation": [1.0, 1.0, 1.0, 1.0, 1.0, 0.25, 1.0, 1.0, 1.0, 1.0, 0.25, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.25, 0.25, 0.25, 0.25, 1.0, 1.0, 1.0, 0.25, 0.25, 0.25, 0.25],
+
+    "sampler":{
+        "mean_fname": "dataset/z_stats/mu_z_last_af.npy",
+        "cholesky_fname": "dataset/z_stats/cholesky_z_last_af.npy"
+    },
+
+    "model":{
+        "available": ["baseline", "least_square", "modified_baseline", "gnn"],
+        "used": "baseline",
+        "baseline": {
+            "hidden_size":2048,
+            "num_layers": 5,
+            "use_svd": false
+        }
+    },
+
+    "training_settings":{
+        "train_set": {
+            "sample": true,
+            "corrupt": true
+        },
+        "val_set": {
+            "sample": false,
+            "corrupt": true
+        }
+    },
+
+    "optimizer":{
+        "available": ["SGD", "Adam", "AmsGrad"],
+        "used": "AmsGrad",
+        "SGD": {
+            "lr": 0.001
+        },
+        "Adam": {
+            "lr": 0.001
+        },
+        "AmsGrad": {
+            "lr": 1e-4,
+            "weight_decay": 0.01
+        }
+    },
+
+    "lr_scheduler": {
+        "available": ["ExponentialLR", "MultiStepLR"],
+        "used": "ExponentialLR",
+        "ExponentialLR":{
+            "decay": 0.96
+        },
+        "MultiStepLR":{
+            "range": 12
+        }
+    }
+}

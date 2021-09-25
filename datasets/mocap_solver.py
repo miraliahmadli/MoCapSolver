@@ -117,7 +117,7 @@ class MS_Dataset(Dataset):
 
         self.indices = []
         for f_idx in range(len(self.X_m)):
-            sublist = [(f_idx, pivot) for pivot in range(self.X_m[f_idx].shape[0] - self.window_size)]
+            sublist = [(f_idx, pivot) for pivot in range(0, self.X_m[f_idx].shape[0] - self.window_size, self.window_size // 2)]
             self.indices += sublist
 
     def __len__(self):
@@ -127,17 +127,38 @@ class MS_Dataset(Dataset):
         f_idx, pivot = self.indices[index]
         X_c = self.X_c[f_idx] # m x j x 3
         X_t = self.X_t[f_idx] # j x 3
-        X_m = self.X_m[f_idx][pivot : pivot + self.window_size] # T x (J*4 + 3)
-        raw_markers = self.raw[f_idx][pivot : pivot + self.window_size] # T x m x 3
-        clean_markers = self.clean[f_idx][pivot : pivot + self.window_size]
+        X_m = self.X_m[f_idx][pivot : pivot + self.window_size].clone() # T x (J*4 + 3)
+        raw_markers = self.raw[f_idx][pivot : pivot + self.window_size].clone() # T x m x 3
+        clean_markers = self.clean[f_idx][pivot : pivot + self.window_size].clone()
         ref_marker_pos = self.ref_marker_pos[f_idx][pivot]
 
         F = local_frame_F(raw_markers, ref_marker_pos.unsqueeze(1), self.local_ref_markers)
         F_inv = xform_inv(F)
+
+        root_rot = quaternion_to_matrix(X_m[..., :4])
+        root_t = X_m[..., -3:].unsqueeze(-1)
+        root_xform = torch.cat((root_rot, root_t), -1)
+        root_44 = xform_to_mat44(root_xform) # T x 4 x 4
+        root = F_inv @ root_44 # T x 3 x 4
+        root_quat = matrix_to_quaternion(root[..., :3]) # T x 4
+        X_m[..., :4] = root_quat
+        X_m[..., -3:] = root[..., -1]
+
+        # from models.mocap_solver import FK
+        # from models.mocap_solver.skeleton import get_topology
+        # from tools.viz import visualize
+        # joint_topology = get_topology("dataset/hierarchy_synthetic_bfs.txt", 24)
+        # j_rot, j_tr = FK(joint_topology, X_m.unsqueeze(0), X_t.unsqueeze(0))
+        # j_xform = torch.cat([j_rot, j_tr.unsqueeze(-1)], dim=-1)
+
+        # visualize(Ys=10*j_xform[0].detach().cpu().numpy()[..., [0, 2, 1], :])
+        # exit()
+
         nans = ~((raw_markers != 0.0).any(axis=-1))
         raw_markers_normalized = F_inv[..., :3].unsqueeze(1) @ raw_markers[..., None] + F_inv[..., 3, None].unsqueeze(1)
         raw_markers_normalized[nans] = torch.zeros((3,1)).to(torch.float32)
-        return X_c, X_t, X_m, raw_markers_normalized.squeeze(-1), clean_markers, F
+        clean_markers_norm = F_inv[..., :3].unsqueeze(1) @ clean_markers[..., None] + F_inv[..., 3, None].unsqueeze(1)
+        return X_c, X_t, X_m, raw_markers_normalized.squeeze(-1), clean_markers_norm.squeeze(-1), F#, root_quat, root[..., -1]
 
 
 def test():

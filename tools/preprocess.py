@@ -102,7 +102,7 @@ def clean_XY(X_read, Y_read, avg_bone_read, m_conv=0.56444, del_nans=False):#0.5
     return X, Y, avg_bone
 
 
-def local_frame(X, Y, X_mean, device="cuda"):
+def local_frame(X, Y, X_mean):
     '''
     Local frame F calculation function
     rot: Rotation of local_frame_joint
@@ -124,12 +124,12 @@ def local_frame(X, Y, X_mean, device="cuda"):
     F_inv = xform_inv(F)
     F_inv_expand = torch.unsqueeze(F_inv, 1)
 
-    Y_44 = xform_to_mat44(Y, device)
+    Y_44 = xform_to_mat44(Y)
     Y_local = torch.matmul(F_inv_expand, Y_44)
 
     return F, Y_local
 
-def local_frame_F(X, X_mean, local_frame_markers, device="cuda"):
+def local_frame_F(X, X_mean, local_frame_markers):
     X_picked = X[:, local_frame_markers, :]
     R, t = svd_rot(X_mean.permute(1, 2, 0), X_picked.permute(0, 2, 1))
 

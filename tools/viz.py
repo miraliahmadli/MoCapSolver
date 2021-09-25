@@ -192,7 +192,7 @@ class MocapViewer(glut_viewer.Viewer):
 
 
 def visualize(Xs=np.array([]), Ys=np.array([]), colors_X=[[0, 0, 0, 255]], colors_Y=[[0, 255, 0, 255], [255, 0, 0, 255]],
-              hierarchy_file="dataset/hierarchy.txt", export_fname="./test.mp4", res=(1920, 1080),
+              hierarchy_file="dataset/hierarchy_synthetic_bfs.txt", export_fname="./test.mp4", res=(1920, 1080),
               fps_anim=120.0, fps_vid=25.0, focus="skel", draw_lrfm=False):
     """
     Visualize skeleton and/or markers and export as mp4

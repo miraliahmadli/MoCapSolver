@@ -50,7 +50,7 @@ class RS_Agent(BaseAgent):
             self.model = Baseline(self.num_markers, self.num_joints, hidden_size, num_layers, use_svd)
         elif used == "least_square":
             w = weight_assign('dataset/joint_to_marker_three2one.txt').to(self.device)
-            self.model = LS_solver(self.num_joints, w, self.device)
+            self.model = LS_solver(self.num_joints, w)
         else:
             raise NotImplementedError
 
@@ -74,10 +74,10 @@ class RS_Agent(BaseAgent):
         if sample_markers:
             Z = self.sampler.sample((bs, )).view(-1, self.num_markers, self.num_joints, 3)
 
-        X = LBS(self.w, Y, Z, device=self.device)
+        X = LBS(self.w, Y, Z)
         if corrupt_markers:
             beta = 0.05 / (self.conv_to_m * avg_bone)
-            X_hat = corrupt(X, beta=beta.view(-1), device=self.device)
+            X_hat = corrupt(X, beta=beta.view(-1))
         else:
             X_hat = X
 
@@ -257,7 +257,7 @@ class RS_Agent(BaseAgent):
                 loss_tr /= bs
                 loss = loss_tr + loss_rot
 
-                Y_hat_4x4 = xform_to_mat44(Y_hat, self.device)
+                Y_hat_4x4 = xform_to_mat44(Y_hat)
                 Y_ = F @ Y_hat_4x4
                 Y_ = Y_.cpu().detach().numpy()
                 np.save(f"asd.npy", Y_)

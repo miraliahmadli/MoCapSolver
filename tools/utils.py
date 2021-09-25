@@ -2,7 +2,7 @@ import torch
 import numpy as np
 
 
-def xform_to_mat44(X, device="cuda"):
+def xform_to_mat44(X):
     '''
     Converts 3 x 4 rigid body tranformations to 4 x 4
 
@@ -13,7 +13,7 @@ def xform_to_mat44(X, device="cuda"):
         X_44: 4 x 4 rigid body transformation matrix, dim: (..., 4, 4)
     '''
     shape = X.shape[: -2] + (1, 4)
-    affine = torch.zeros(shape, device=device)
+    affine = torch.zeros(shape, device=X.device)
     affine[..., -1] = 1
     X_44 = torch.cat((X, affine), axis = -2)
 
@@ -40,7 +40,7 @@ def xform_inv(Y):
     return Y_inv
 
 
-def LBS(w, Y, Z, device="cuda"):
+def LBS(w, Y, Z):
     '''
     Linear Blend Skinning function
 
@@ -57,7 +57,7 @@ def LBS(w, Y, Z, device="cuda"):
 
     w_ = w.permute(1, 0) # j x m
 
-    z_padding = torch.ones((n, m, j, 1), device=device)
+    z_padding = torch.ones((n, m, j, 1), device=Z.device)
     Z_ = torch.cat((Z, z_padding), axis=3)
     Z_ = Z_.permute(2, 0, 3, 1) # j x n x 4 x m
 
@@ -134,7 +134,7 @@ def symmetric_orthogonalization(x):
   return r
 
 
-def corrupt(X, sigma_occ=0.1, sigma_shift=0.1, beta=.5, device="cuda"):
+def corrupt(X, sigma_occ=0.1, sigma_shift=0.1, beta=.5):
     '''
     Given marker data X as input this algorithm is used
     to randomly occlude markers (placing them at zero) or shift markers
@@ -155,8 +155,8 @@ def corrupt(X, sigma_occ=0.1, sigma_shift=0.1, beta=.5, device="cuda"):
     n, m, _ = X.shape
     
     # Sample probability at which to occlude / shift markers.
-    a_occ = torch.normal(0.0, sigma_occ, (n, 1), device=device) # (n, 1)
-    a_shift = torch.normal(0.0, sigma_shift, (n, 1), device=device) # (n, 1)
+    a_occ = torch.normal(0.0, sigma_occ, (n, 1), device=X.device) # (n, 1)
+    a_shift = torch.normal(0.0, sigma_shift, (n, 1), device=X.device) # (n, 1)
  
     # Sample using clipped probabilities if markers are occluded / shifted.
     a_occ = torch.abs(a_occ)
@@ -167,12 +167,12 @@ def corrupt(X, sigma_occ=0.1, sigma_shift=0.1, beta=.5, device="cuda"):
 
     sampler_occ = torch.distributions.bernoulli.Bernoulli(a_occ)
     sampler_shift = torch.distributions.bernoulli.Bernoulli(a_shift)
-    X_occ = sampler_occ.sample((m,)).transpose(1, 0).to(device) # n x m
-    X_shift = sampler_shift.sample((m,)).transpose(1, 0).to(device) # n x m
+    X_occ = sampler_occ.sample((m,)).transpose(1, 0).to(X.device) # n x m
+    X_shift = sampler_shift.sample((m,)).transpose(1, 0).to(X.device) # n x m
     
     # Sample the magnitude by which to shift each marker.
     sampler_beta = torch.distributions.Uniform(low=-beta, high=beta)
-    X_v = sampler_beta.sample((m, 3)).permute(2, 0, 1).to(device) # n x m x 3
+    X_v = sampler_beta.sample((m, 3)).permute(2, 0, 1).to(X.device) # n x m x 3
 
     # Move shifted markers and place occluded markers at zero.
     X_hat = X + torch.multiply(X_v, X_shift.reshape((n, m, 1)))

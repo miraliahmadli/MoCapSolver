@@ -192,21 +192,25 @@ class AE_loss(nn.Module):
 
 
 class MS_loss(nn.Module):
-    def __init__(self, joint_weights, marker_weights, alphas):
+    def __init__(self, joint_weights, marker_weights, offset_weights, alphas):
         super(MS_loss, self).__init__()
         self.a1, self.a2, self.a3, self.a4 = alphas
-        self.crit = weighted_L1_loss(1, mode="mean")
-        self.crit_c = weighted_L1_loss(1, mode="mean")
-        self.crit_t = weighted_L1_loss(1, mode="mean")
-        self.crit_m = weighted_L1_loss(1, mode="mean")
+        self.crit = weighted_L1_loss(marker_weights, mode="mean")
+        self.crit_c = weighted_L1_loss(offset_weights, mode="mean")
+        self.crit_t = weighted_L1_loss(joint_weights, mode="mean")
+        self.crit_m = weighted_L1_loss(joint_weights, mode="mean")
 
     def forward(self, Y, X):
         Y_c, Y_t, Y_m, Y_ = Y
         X_c, X_t, X_m, X_ = X
+        rotation_x, position_x = split_raw_motion(X_m)
+        rotation_y, position_y = split_raw_motion(Y_m)
+
         loss_marker = self.crit(Y_, X_)
         loss_c = self.crit_c(Y_c, X_c)
         loss_t = self.crit_t(Y_t, X_t)
-        loss_m = self.crit_m(Y_m, X_m)
+        loss_m = self.crit_m(rotation_y, rotation_x) + torch.abs(position_x - position_y).mean()
+
 
         loss = self.a1 * loss_marker + self.a2 * loss_c + self.a3 * loss_t + self.a4 * loss_m
         return loss, loss_c, loss_t, loss_m, loss_marker

@@ -1,20 +1,20 @@
 {
-    "project": "denoising",
+    "project": "MocapSolver",
     "entity": "mocap",
 
-    "train_filenames": "data/synthetic_train.txt",
-    "val_filenames": "data/synthetic_val.txt",
+    "train_filenames": "data/synthetic_train_all.txt",
+    "val_filenames": "data/synthetic_val_all.txt",
     "test_filenames": "data/synthetic_test.txt",
 
-    "logs_dir": "logs/ms_all/",
-    "model_dir": "logs/ms_all/model.pth",
-    "train_sum": "logs/ms_all/tensorboard/train",
-    "val_sum": "logs/ms_all/tensorboard/val",
+    "logs_dir": "logs/ms_all_5/",
+    "model_dir": "logs/ms_all_5/model.pth",
+    "train_sum": "logs/ms_all_5/tensorboard/train",
+    "val_sum": "logs/ms_all_5/tensorboard/val",
 
     "use_gpu": true,
     "gpu_idx": 0,
-    "epochs": 75,
-    "batch_size": 512,
+    "epochs": 4800,
+    "batch_size": 4096,
     "window_size": 64,
     "local_ref_joint": 3,
     "local_ref_markers": [3, 7, 11, 21, 32, 36, 46, 54],
@@ -23,7 +23,9 @@
     "num_joints": 24,
 
     "hierarchy": "dataset/hierarchy_synthetic_bfs.txt",
-    "joint_weights": [],
+    "joint_weights": [4, 6, 6, 4, 6, 6, 4, 10, 10, 4, 10, 10, 8, 4, 4, 8, 4, 4, 6, 6, 10, 10, 10, 10],
+    "marker_weights": [8, 4, 4, 4, 6, 8, 4, 4, 6, 8, 4, 4, 10, 6, 4, 10, 6, 6, 6, 10, 10, 4, 10, 10, 6, 10, 4, 4, 6, 6, 8, 4, 4, 6, 8, 4, 4, 10, 6, 4, 10, 10, 6, 6, 10, 10, 4, 10, 6, 6, 10, 4, 4, 6, 4, 4],
+    "offset_weights": "dataset/offset_weights.npy",
     "weight_assignment": "dataset/weights.npy",
 
     "model":{
@@ -51,7 +53,7 @@
         "available": ["SGD", "Adam", "AmsGrad"],
         "used": "SGD",
         "SGD": {
-            "lr": 0.001,
+            "lr": 0.01,
             "weight_decay": 0.01
         },
         "Adam": {
@@ -65,12 +67,12 @@
 
     "lr_scheduler": {
         "available": ["ExponentialLR", "MultiStepLR"],
-        "used": "ExponentialLR",
+        "used": "MultiStepLR",
         "ExponentialLR":{
-            "decay": 0.96
+            "decay": 0.99
         },
         "MultiStepLR":{
-            "range": 12
+            "range": 550
         }
     },
 
