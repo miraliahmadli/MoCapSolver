@@ -53,7 +53,7 @@ class RS_Dataset(Dataset):
         avg_bone = torch.tensor(avg_bone)
 
         Z = get_Z(X, Y)
-        F, Y = local_frame(X, Y, self.lrf_mean_markers, "cpu")
+        F, Y = local_frame(X, Y, self.lrf_mean_markers)
         Y, Z = Y.squeeze(0), Z.squeeze(0)
         return Y, Z, F, avg_bone
 
@@ -92,6 +92,6 @@ class RS_Test_Dataset(Dataset):
         avg_bone = torch.tensor(avg_bone)
 
         Z = get_Z(X, Y)
-        F, Y = local_frame(X, Y, self.lrf_mean_markers, "cpu")
+        F, Y = local_frame(X, Y, self.lrf_mean_markers)
         Y, Z = Y.squeeze(0), Z.squeeze(0)
         return Y, Z, F, avg_bone
