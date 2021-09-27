@@ -22,6 +22,26 @@ def read_files(inputs):
     return (X, Y, avg_bone)
 
 
+def read_file_sy(fname):
+    data = np.load(fname)
+    X_read = data["raw_markers"]
+    Y_read = np.concatenate([data["J_R"], data["J_t"][..., None]], axis=-1)
+    Z_read = data["marker_configuration"]
+    bone_len = np.linalg.norm(data["J_t_local"], axis=-1)
+    avg_bone_read = bone_len.sum() / (bone_len.shape[0] - 1)
+    avg_bone = np.broadcast_to(avg_bone_read, (Y_read.shape[0], 1))
+    Z_read = np.broadcast_to(Z_read, (Y_read.shape[0], *Z_read.shape))
+    X = torch.tensor(X_read)
+    Y = torch.tensor(Y_read)
+    Z = torch.tensor(Z_read)
+    avg_bone = torch.tensor(avg_bone)
+    X *= (1.0 / avg_bone[..., None])
+    Y[..., 3] *= (1.0 / avg_bone[..., None])
+    Z *= (1.0 / avg_bone[0, 0])
+    
+    return (X, Y, Z, avg_bone)
+
+
 class RS_Dataset(Dataset):
     def __init__(self, csv_file, file_stems, lrf_mean_markers_file, num_marker, num_joint):
         with open(file_stems) as f:
@@ -53,6 +73,41 @@ class RS_Dataset(Dataset):
         avg_bone = torch.tensor(avg_bone)
 
         Z = get_Z(X, Y)
+        F, Y = local_frame(X, Y, self.lrf_mean_markers)
+        Y, Z = Y.squeeze(0), Z.squeeze(0)
+        return Y, Z, F, avg_bone
+
+
+class RS_Synthetic(Dataset):
+    def __init__(self, data_dir, lrf_mean_markers_file, num_marker, num_joint):
+        if isinstance(data_dir, list):
+            fnames = data_dir
+        else:
+            with open(data_dir) as f:
+                all_data = f.readlines()
+                fnames = [line.strip() for line in all_data]
+
+        with multiprocess.Pool(processes = os.cpu_count()) as pool:
+            data = pool.map(read_file_sy, fnames)
+
+        self.marker_data = np.concatenate([x[0] for x in data], 0)
+        self.motion_data = np.concatenate([x[1] for x in data], 0)
+        self.local_offsets = np.concatenate([x[2] for x in data], 0)
+        self.avg_bone = np.concatenate([x[3] for x in data], 0)
+        self.lrf_mean_markers = torch.tensor(np.load(lrf_mean_markers_file))
+
+    def __len__(self):
+        return self.motion_data.shape[0]
+
+    def __getitem__(self, index):
+        avg_bone = self.avg_bone[index]
+        X = self.marker_data[index]
+        Y = self.motion_data[index]
+        X = torch.tensor(X).to(torch.float32).unsqueeze(0)
+        Y = torch.tensor(Y).to(torch.float32).unsqueeze(0)
+        avg_bone = torch.tensor(avg_bone)
+
+        Z = self.local_offsets[index]
         F, Y = local_frame(X, Y, self.lrf_mean_markers)
         Y, Z = Y.squeeze(0), Z.squeeze(0)
         return Y, Z, F, avg_bone
@@ -95,3 +150,16 @@ class RS_Test_Dataset(Dataset):
         F, Y = local_frame(X, Y, self.lrf_mean_markers)
         Y, Z = Y.squeeze(0), Z.squeeze(0)
         return Y, Z, F, avg_bone
+
+
+def test():
+    X, Y, Z, avg_bone = read_file_sy("dataset/synthetic/01_03_poses_0.npz")
+    print(X.shape, Y.shape, Z.shape, avg_bone.shape)
+
+
+def main():
+    test()
+
+
+if __name__ == "__main__":
+    main()
