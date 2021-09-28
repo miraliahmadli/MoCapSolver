@@ -137,7 +137,7 @@ def LBS_motion(w, Y_c, xform_global):
 
 
 class Motion_loss(nn.Module):
-    def __init__(self, joint_topology, edges, joint_weights, b1, b2):
+    def __init__(self, joint_topology, joint_weights, b1, b2):
         super(Motion_loss, self).__init__()
         self.b1 = b1
         self.b2 = b2
@@ -149,21 +149,22 @@ class Motion_loss(nn.Module):
         rotation_x, position_x = split_raw_motion(X_m)
         rotation_y, position_y = split_raw_motion(Y_m)
 
-        loss_rot = self.b1 * self.rot_crit(rotation_y, rotation_x)
-        loss_fk = self.b2 * self.fk_crit(FK(self.topology, rotation_y, Y_t), 
-                                         FK(self.topology, rotation_x, X_t))
-        loss_pos = torch.abs(position_x - position_y).mean()
-        loss = loss_rot + loss_fk + loss_pos
+        loss_rot = self.b1 * self.rot_crit(rotation_y, rotation_x) + torch.abs(position_x - position_y).mean()
+        
+        _, global_tr_y = FK(self.topology, Y_m, Y_t)
+        _, global_tr_x = FK(self.topology, X_m, X_t)
+        loss_fk = self.b2 * self.fk_crit(global_tr_y, global_tr_x)
+        loss = loss_rot + loss_fk
         return loss
 
 
 class Offset_loss(nn.Module):
-    def __init__(self, marker_weights, joint_weights, b3, b4, weights):
+    def __init__(self, marker_weights, offset_weights, b3, b4, weights):
         super(Offset_loss, self).__init__()
         self.b3 = b3
         self.b4 = b4
         self.w = weights
-        self.l1_crit = weighted_L1_loss(joint_weights, mode="mean")
+        self.l1_crit = weighted_L1_loss(offset_weights, mode="mean")
         self.lbs_crit = weighted_L1_loss(marker_weights, mode="mean")
 
     def forward(self, Y_c, X_c, Y_t, X_t):
@@ -174,12 +175,12 @@ class Offset_loss(nn.Module):
 
 
 class AE_loss(nn.Module):
-    def __init__(self, joint_topology, edges, marker_weights, joint_weights, betas, weight_assignment):
+    def __init__(self, joint_topology, marker_weights, joint_weights, offset_weights, betas, weight_assignment):
         super(AE_loss, self).__init__()
         b1, b2, b3, b4 = betas
-        self.crit_c = Offset_loss(1, 1, b3, b4, weight_assignment)
-        self.crit_t = weighted_L1_loss(1, mode="mean")
-        self.crit_m = Motion_loss(joint_topology, edges, 1, b1, b2)
+        self.crit_c = Offset_loss(marker_weights, offset_weights, b3, b4, weight_assignment)
+        self.crit_t = weighted_L1_loss(joint_weights, mode="mean")
+        self.crit_m = Motion_loss(joint_topology, joint_weights, b1, b2)
 
     def forward(self, Y, X):
         Y_c, Y_t, Y_m = Y
