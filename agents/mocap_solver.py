@@ -18,7 +18,7 @@ from tools.utils import xform_to_mat44
 class MS_Agent(BaseAgent):
     def __init__(self, cfg, test=False, sweep=False):
         super(MS_Agent, self).__init__(cfg, test, sweep)
-        torch.autograd.set_detect_anomaly(True)
+        # torch.autograd.set_detect_anomaly(True)
         self.train_decoder = cfg.model.train_decoder
         self.joint_weights = torch.tensor(cfg.joint_weights, dtype=torch.float32, device=self.device).view(-1, 1)
         self.marker_weights = torch.tensor(cfg.marker_weights, dtype=torch.float32, device=self.device).view(-1, 1)

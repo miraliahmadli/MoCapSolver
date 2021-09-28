@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader
 
 from agents.base_agent import BaseAgent
 from models import Baseline, LS_solver, RS_loss
-from datasets.robust_solver import RS_Dataset, RS_Test_Dataset
+from datasets.robust_solver import RS_Dataset, RS_Test_Dataset, RS_Synthetic, RS_Synthetic_Test
 
 from tools.utils import LBS, corrupt, preweighted_Z, xform_to_mat44, symmetric_orthogonalization
 from tools.utils import svd_rot as svd_solver
@@ -21,11 +21,12 @@ from tools.transform import transformation_diff
 class RS_Agent(BaseAgent):
     def __init__(self, cfg, test=False, sweep=False):
         super(RS_Agent, self).__init__(cfg, test, sweep)
-        self.conv_to_m = 0.56444#0.57803
+        # torch.autograd.set_detect_anomaly(True)
+        self.conv_to_m = cfg.scale_factor #0.57803
 
         self.user_weights_rot = cfg.user_weights_rotation
         self.user_weights_t = cfg.user_weights_translation
-        self.w = weight_assign(cfg.joint_to_marker, cfg.num_markers, cfg.num_joints)
+        self.w = weight_assign(cfg.weight_assignment, cfg.num_markers, cfg.num_joints)
 
         self.w = self.w.to(self.device)
         self.user_weights_rot = torch.tensor(self.user_weights_rot, device=self.device)[None, ..., None, None] / 3
@@ -57,10 +58,19 @@ class RS_Agent(BaseAgent):
         self.model.to(self.device)
 
     def load_data(self):
-        self.train_dataset = RS_Dataset(csv_file=self.cfg.csv_file , file_stems=self.cfg.train_filenames, lrf_mean_markers_file=self.cfg.lrf_mean_markers,\
-                                num_marker=self.num_markers, num_joint=self.num_joints)
-        self.val_dataset = RS_Dataset(csv_file=self.cfg.csv_file , file_stems=self.cfg.val_filenames, lrf_mean_markers_file=self.cfg.lrf_mean_markers,\
-                                num_marker=self.num_markers, num_joint=self.num_joints)
+        if self.cfg.dataset == "CMU":
+            self.train_dataset = RS_Dataset(csv_file=self.cfg.csv_file , file_stems=self.cfg.train_filenames, lrf_mean_markers_file=self.cfg.lrf_mean_markers,\
+                                    num_marker=self.num_markers, num_joint=self.num_joints)
+            self.val_dataset = RS_Dataset(csv_file=self.cfg.csv_file , file_stems=self.cfg.val_filenames, lrf_mean_markers_file=self.cfg.lrf_mean_markers,\
+                                    num_marker=self.num_markers, num_joint=self.num_joints)
+        elif self.cfg.dataset == "Synthetic":
+            self.train_dataset = RS_Synthetic(data_dir=self.cfg.train_filenames, lrf_mean_markers_file=self.cfg.lrf_mean_markers,\
+                                        num_marker=self.num_markers, num_joint=self.num_joints, local_ref_markers=self.cfg.local_ref_markers)
+            self.val_dataset = RS_Synthetic(data_dir=self.cfg.val_filenames, lrf_mean_markers_file=self.cfg.lrf_mean_markers,\
+                                        num_marker=self.num_markers, num_joint=self.num_joints, local_ref_markers=self.cfg.local_ref_markers)
+        else:
+            print("Wrong Dataset")
+            exit()
 
         self.train_steps = len(self.train_dataset) // self.batch_size
         self.val_steps = len(self.val_dataset) // self.batch_size
@@ -222,9 +232,15 @@ class RS_Agent(BaseAgent):
         return total_loss, message
 
     def test_one_animation(self):
-        self.test_dataset = RS_Test_Dataset(csv_file=self.cfg.csv_file , file_stems=self.cfg.test_filenames,\
+        if self.cfg.dataset == "CMU":
+            self.test_dataset = RS_Test_Dataset(csv_file=self.cfg.csv_file , file_stems=self.cfg.test_filenames,\
                                 num_marker=self.num_markers, num_joint=self.num_joints)
-
+        elif self.cfg.dataset == "Synthetic":
+            self.test_dataset = RS_Synthetic_Test(data_dir=self.cfg.test_filenames, lrf_mean_markers_file=self.cfg.lrf_mean_markers,\
+                                        num_marker=self.num_markers, num_joint=self.num_joints, local_ref_markers=self.cfg.local_ref_markers)
+        else:
+            print("Wrong Dataset name")
+            exit()
         self.test_steps = len(self.test_dataset)
 
         self.test_data_loader = DataLoader(self.test_dataset, batch_size=1, \
@@ -260,7 +276,18 @@ class RS_Agent(BaseAgent):
                 Y_hat_4x4 = xform_to_mat44(Y_hat)
                 Y_ = F @ Y_hat_4x4
                 Y_ = Y_.cpu().detach().numpy()
-                np.save(f"asd.npy", Y_)
+
+                Y_4x4 = xform_to_mat44(Y)
+                Y_gt = F @ Y_4x4
+                Y_gt = Y_gt.cpu().detach().numpy()
+                
+                # X = X.cpu().detach().numpy()
+                all_Y = np.concatenate((Y_gt[None, :], Y_[None, :]), axis=0)
+
+                from tools.viz import visualize
+                visualize(Ys=all_Y[..., [1, 2, 0], :])#, Xs=X, fps_vid=120.0)
+                exit()
+                # np.save(f"asd.npy", Y_)
                 print("loss={0:.4f}".format(loss.item()))
 
     def build_loss_function(self):

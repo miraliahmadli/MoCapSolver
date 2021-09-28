@@ -13,6 +13,9 @@ def denormalize_Y(Y_hat, Y):
     '''
     Y_mu = torch.mean(Y, 0).unsqueeze(0)
     Y_std = torch.std(Y, 0, unbiased=True).unsqueeze(0)
+    torch.nan_to_num(Y_std, out=Y_std)
+    Y_std[Y_std < 1e-10] = 1
+
     Y_denorm = (Y_hat * Y_std) + Y_mu
     return Y_denorm
 
@@ -31,8 +34,10 @@ def normalize_X(X_hat, X):
     '''
     X_mu = torch.mean(X, 0)
     X_std = torch.std(X, 0, unbiased=True)
+    X_std[X_std < 1e-10] = 1
 
-    X_norm = (X_hat - X_mu.unsqueeze(0)) / X_std.unsqueeze(0)
+    X_norm = (X_hat - X_mu.unsqueeze(0)) / (X_std.unsqueeze(0) + 1e-5)
+    torch.nan_to_num(X_norm, out=X_norm)
     return X_norm
 
 
@@ -50,8 +55,10 @@ def normalize_Z_pw(Z):
     '''
     Z_mu = torch.mean(Z, 0)
     Z_std = torch.std(Z, 0, unbiased=True)
+    Z_std[Z_std < 1e-10] = 1
 
-    Z_norm = (Z - Z_mu.unsqueeze(0)) / Z_std.unsqueeze(0)
+    Z_norm = (Z - Z_mu.unsqueeze(0)) / (Z_std.unsqueeze(0) + 1e-5)
+    torch.nan_to_num(Z_norm, out=Z_norm)
     return Z_norm
 
 

@@ -1,8 +1,9 @@
 {
     "project": "denoising",
     "entity": "mocap",
+    "dataset": "CMU",
     
-    "joint_to_marker": "dataset/joint_to_marker_paper.txt",
+    "weight_assignment": "dataset/joint_to_marker_paper.txt",
     "csv_file": "dataset/meta_data.csv",
     "lrf_mean_markers": "dataset/LRF_mean_offsets.npy",
 
@@ -21,6 +22,7 @@
     "batch_size": 512,
     "num_markers": 41,
     "num_joints": 31,
+    "scale_factor": 0.56444,
     "user_weights_rotation": [1.0, 1.0, 1.0, 1.0, 0.5, 0.25, 1.0, 1.0, 1.0, 0.5, 0.25, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.25, 0.25, 0.25, 0.25, 1.0, 1.0, 1.0, 0.25, 0.25, 0.25, 0.25],
     "user_weights_translation": [1.0, 1.0, 1.0, 1.0, 1.0, 0.25, 1.0, 1.0, 1.0, 1.0, 0.25, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.25, 0.25, 0.25, 0.25, 1.0, 1.0, 1.0, 0.25, 0.25, 0.25, 0.25],
 

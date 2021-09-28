@@ -1,0 +1,83 @@
+{
+    "project": "denoising",
+    "entity": "mocap",
+    "dataset": "Synthetic",
+    
+    "weight_assignment": "dataset/weights.npy",
+    "csv_file": "",
+    "lrf_mean_markers": "dataset/LRF_mean_offsets_synthetic_2.npy",
+
+    "train_filenames": "data/synthetic_train_all.txt",
+    "val_filenames": "data/synthetic_val_all.txt",
+    "test_filenames": "data/synthetic_test.txt",
+
+    "logs_dir": "logs/syn_nc/",
+    "model_dir": "logs/syn_nc/model.pth",
+    "train_sum": "logs/syn_nc/tensorboard/train",
+    "val_sum": "logs/syn_nc/tensorboard/val",
+
+    "use_gpu": true,
+    "gpu_idx": 0,
+    "epochs": 70,
+    "batch_size": 512,
+    "num_markers": 56,
+    "num_joints": 24,
+    "scale_factor": 10.0,
+    "local_ref_joint": 3,
+    "local_ref_markers": [3, 7, 11, 21, 32, 36, 46, 54],
+    "user_weights_rotation":[0.4, 0.6, 0.6, 0.4, 0.6, 0.6, 0.4, 0.10, 0.10, 0.4, 0.10, 0.10, 0.8, 0.4, 0.4, 0.8, 0.4, 0.4, 0.6, 0.6, 0.10, 0.10, 0.10, 0.10],
+    "user_weights_translation": [0.4, 0.6, 0.6, 0.4, 0.6, 0.6, 0.4, 0.10, 0.10, 0.4, 0.10, 0.10, 0.8, 0.4, 0.4, 0.8, 0.4, 0.4, 0.6, 0.6, 0.10, 0.10, 0.10, 0.10],
+    "hierarchy": "dataset/hierarchy_synthetic_bfs.txt",
+
+    "sampler":{
+        "mean_fname": "dataset/z_stats/mu_synthetic_2.npy",
+        "cholesky_fname": "dataset/z_stats/cholesky_synthetic_2.npy"
+    },
+
+    "model":{
+        "available": ["baseline", "least_square", "modified_baseline", "gnn"],
+        "used": "baseline",
+        "baseline": {
+            "hidden_size":2048,
+            "num_layers": 5,
+            "use_svd": false
+        }
+    },
+
+    "training_settings":{
+        "train_set": {
+            "sample": false,
+            "corrupt": true
+        },
+        "val_set": {
+            "sample": false,
+            "corrupt": true
+        }
+    },
+
+    "optimizer":{
+        "available": ["SGD", "Adam", "AmsGrad"],
+        "used": "AmsGrad",
+        "SGD": {
+            "lr": 0.001
+        },
+        "Adam": {
+            "lr": 0.001
+        },
+        "AmsGrad": {
+            "lr": 1e-4,
+            "weight_decay": 0.01
+        }
+    },
+
+    "lr_scheduler": {
+        "available": ["ExponentialLR", "MultiStepLR"],
+        "used": "ExponentialLR",
+        "ExponentialLR":{
+            "decay": 0.96
+        },
+        "MultiStepLR":{
+            "range": 12
+        }
+    }
+}

@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 
 from tools.utils import xform_inv, xform_to_mat44, svd_rot
@@ -16,22 +17,25 @@ main_joints = \
         'lhumerus', 'lradius', 'lwrist', 'lhand', 'lfingers', 'lthumb',
         'rclavicle', 'rhumerus', 'rradius', 'rwrist', 'rhand', 'rfingers', 'rthumb']
 
-local_frame_markers = [4, 9, 23, 28, 39, 40]
 local_frame_joint = 11
 
 
 def weight_assign(joint_to_marker_file, num_marker=41, num_joints=31):
-    joint_to_marker = []
-    with open(joint_to_marker_file, "r") as f:
-        for l in f.readlines():
-            splitted = l.split()[1:]
-            joint_to_marker.append(splitted)
+    if joint_to_marker_file.endswith(".txt"):
+        joint_to_marker = []
+        with open(joint_to_marker_file, "r") as f:
+            for l in f.readlines():
+                splitted = l.split()[1:]
+                joint_to_marker.append(splitted)
 
-    w = torch.zeros((num_marker, num_joints))
-    for i, markers in enumerate(joint_to_marker):
-        for m in markers:
-            w[main_labels.index(m), i] = 1
-
+        w = torch.zeros((num_marker, num_joints))
+        for i, markers in enumerate(joint_to_marker):
+            for m in markers:
+                w[main_labels.index(m), i] = 1
+    elif joint_to_marker_file.endswith(".npy"):
+        w = torch.tensor(np.load(joint_to_marker_file))
+    else:
+        exit()
     return w
 
 
@@ -102,7 +106,7 @@ def clean_XY(X_read, Y_read, avg_bone_read, m_conv=0.56444, del_nans=False):#0.5
     return X, Y, avg_bone
 
 
-def local_frame(X, Y, X_mean):
+def local_frame(X, Y, X_mean, local_frame_markers = [4, 9, 23, 28, 39, 40]):
     '''
     Local frame F calculation function
     rot: Rotation of local_frame_joint
