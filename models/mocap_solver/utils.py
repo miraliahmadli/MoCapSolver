@@ -80,8 +80,8 @@ def split_raw_motion(raw_motion):
 
 
 def FK(topology, X_m, X_t, world=True):
-    #rotation bs x T x (J * 4 + 3)
-    #offset bs x J x 3
+    #X_m bs x T x (J * 4 + 3)
+    #X_t bs x J x 3
     global_tr = torch.empty(X_m.shape[:-1] + X_t.shape[1: ], device=X_m.device) # bs x T x J x 3
     global_rot = quaternion_to_matrix(X_m[..., :-3].view(X_m[..., :-3].shape[:-1] + (-1, 4))) # bs x T x J x 3 x 3
     X_t = X_t.reshape((-1, 1, X_t.shape[-2], X_t.shape[-1], 1)) # bs x 1 x J x 3 x 1

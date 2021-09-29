@@ -86,7 +86,7 @@ class RS_Agent(BaseAgent):
 
         X = LBS(self.w, Y, Z)
         if corrupt_markers:
-            beta = 0.05 / (self.conv_to_m * avg_bone)
+            beta = 3 / (self.conv_to_m * avg_bone)
             X_hat = corrupt(X, beta=beta.view(-1))
         else:
             X_hat = X
