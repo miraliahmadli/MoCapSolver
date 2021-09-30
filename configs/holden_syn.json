@@ -11,13 +11,13 @@
     "val_filenames": "data/synthetic_val_all.txt",
     "test_filenames": "data/synthetic_test.txt",
 
-    "logs_dir": "logs/syn_nc/",
-    "model_dir": "logs/syn_nc/model.pth",
-    "train_sum": "logs/syn_nc/tensorboard/train",
-    "val_sum": "logs/syn_nc/tensorboard/val",
+    "logs_dir": "logs/syn_sc/",
+    "model_dir": "logs/syn_sc/model.pth",
+    "train_sum": "logs/syn_sc/tensorboard/train",
+    "val_sum": "logs/syn_sc/tensorboard/val",
 
     "use_gpu": true,
-    "gpu_idx": 0,
+    "gpu_idx": 1,
     "epochs": 70,
     "batch_size": 512,
     "num_markers": 56,
@@ -46,7 +46,7 @@
 
     "training_settings":{
         "train_set": {
-            "sample": false,
+            "sample": true,
             "corrupt": true
         },
         "val_set": {

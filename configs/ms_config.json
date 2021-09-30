@@ -6,15 +6,15 @@
     "val_filenames": "data/synthetic_val_all.txt",
     "test_filenames": "data/synthetic_test.txt",
 
-    "logs_dir": "logs/ms_all_5/",
-    "model_dir": "logs/ms_all_5/model.pth",
-    "train_sum": "logs/ms_all_5/tensorboard/train",
-    "val_sum": "logs/ms_all_5/tensorboard/val",
+    "logs_dir": "logs/ms_all_3/",
+    "model_dir": "logs/ms_all_3/model.pth",
+    "train_sum": "logs/ms_all_3/tensorboard/train",
+    "val_sum": "logs/ms_all_3/tensorboard/val",
 
     "use_gpu": true,
     "gpu_idx": 0,
-    "epochs": 4800,
-    "batch_size": 512,
+    "epochs": 2400,
+    "batch_size": 128,
     "window_size": 64,
     "overlap_frames": 16,
     "local_ref_joint": 3,
@@ -73,7 +73,7 @@
             "decay": 0.99
         },
         "MultiStepLR":{
-            "range": 550
+            "range": 250
         }
     },
 

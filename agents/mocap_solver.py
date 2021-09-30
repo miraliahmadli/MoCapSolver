@@ -95,7 +95,8 @@ class MS_Agent(BaseAgent):
             print(bs)
             print(X_all.shape, X_all_gt.shape)
             from tools.viz import visualize
-            visualize(Xs=Xs, fps_vid=120, colors_X=[[0, 255, 0], [0, 0, 255]])
+            print(j_xform.shape)
+            visualize(Ys=j_xform.detach().cpu().numpy()[0, ...] * 10, fps_vid=30)
             exit()
         # j_rot_gt, j_tr_gt = FK(self.joint_topology, X_m, X_t)
         # j_xform_gt = torch.cat([j_rot_gt, j_tr_gt.unsqueeze(-1)], dim=-1)
@@ -135,27 +136,27 @@ class MS_Agent(BaseAgent):
             loss.backward()
             self.optimizer.step()
 
-            # glob_r_x, glob_t_x = FK(self.joint_topology, X_m.detach().clone(), X_t.detach().clone())
-            # glob_r_y, glob_t_y = FK(self.joint_topology, Y_m.detach().clone(), Y_t.detach().clone())
-            # xform_x = torch.cat([glob_r_x, glob_t_x[..., None]], dim=-1)
-            # xform_y = torch.cat([glob_r_y, glob_t_y[..., None]], dim=-1)
-            # angle_diff, translation_diff = transformation_diff(xform_x, xform_y)
+            glob_r_x, glob_t_x = FK(self.joint_topology, X_m.detach().clone(), X_t.detach().clone())
+            glob_r_y, glob_t_y = FK(self.joint_topology, Y_m.detach().clone(), Y_t.detach().clone())
+            xform_x = torch.cat([glob_r_x, glob_t_x[..., None]], dim=-1)
+            xform_y = torch.cat([glob_r_y, glob_t_y[..., None]], dim=-1)
+            angle_diff, translation_diff = transformation_diff(xform_x, xform_y)
 
-            # # quat_X = X_m[...,:-3].detach().clone().view(bs, self.window_size, self.num_joints, 4)
-            # # quat_Y = Y_m[...,:-3].detach().clone().view(bs, self.window_size, self.num_joints, 4)
-            # # R_x = quaternion_to_matrix(quat_X)
-            # # R_y = quaternion_to_matrix(quat_Y)
-            # # R = R_y.transpose(-2, -1) @ R_x
-            # # axis_angle = matrix_to_axis_angle(R)
-            # # angle_diff = axis_angle[..., -1] / np.pi * 180 # n x t x j
-            # total_angle_err += (torch.sum(torch.abs(angle_diff)) / np.pi * 180) / (self.window_size * self.num_joints)
+            # quat_X = X_m[...,:-3].detach().clone().view(bs, self.window_size, self.num_joints, 4)
+            # quat_Y = Y_m[...,:-3].detach().clone().view(bs, self.window_size, self.num_joints, 4)
+            # R_x = quaternion_to_matrix(quat_X)
+            # R_y = quaternion_to_matrix(quat_Y)
+            # R = R_y.transpose(-2, -1) @ R_x
+            # axis_angle = matrix_to_axis_angle(R)
+            # angle_diff = axis_angle[..., -1] / np.pi * 180 # n x t x j
+            total_angle_err += (torch.sum(torch.abs(angle_diff)) / np.pi * 180) / (self.window_size * self.num_joints)
 
-            # # jp_err = torch.norm(X_t.detach().clone() - Y_t.detach().clone(), 2, dim=-1) # n x j
-            # # total_jp_err += jp_err.sum() / self.num_joints
-            # total_jp_err += translation_diff.sum() / (self.window_size * self.num_joints)
+            # jp_err = torch.norm(X_t.detach().clone() - Y_t.detach().clone(), 2, dim=-1) # n x j
+            # total_jp_err += jp_err.sum() / self.num_joints
+            total_jp_err += translation_diff.sum() / (self.window_size * self.num_joints)
 
-            # mp_err = torch.norm(X_clean.detach().clone().view(-1, self.num_markers, 3) - Y.detach().clone().view(-1, self.num_markers, 3), 2, dim=-1) # (n x t) x m
-            # total_mp_err += mp_err.sum() / (self.num_markers * self.window_size)
+            mp_err = torch.norm(X_clean.detach().clone().view(-1, self.num_markers, 3) - Y.detach().clone().view(-1, self.num_markers, 3), 2, dim=-1) # (n x t) x m
+            total_mp_err += mp_err.sum() / (self.num_markers * self.window_size)
 
             # tqdm_update = "Epoch={0:04d}, loss={1:.4f}, angle_diff={2:.4f}, jpe={3:.4f}, mpe={4:4f}".format(epoch, 1000*loss.item() / bs, torch.abs(angle_diff).mean(), jp_err.mean(), mp_err.mean())
             tqdm_update = "Epoch={0:04d}, loss={1:.4f}, loss_c={2:.4f}, loss_t={3:.4f}, loss_m={4:4f}, loss_marker={5:4f}".format(epoch, loss.item(), loss_c.item(), loss_t.item(), loss_m.item(), loss_marker.item())
@@ -200,27 +201,27 @@ class MS_Agent(BaseAgent):
                 loss, loss_c, loss_t, loss_m, loss_marker = losses
                 total_loss += loss.item() * bs
 
-                # glob_r_x, glob_t_x = FK(self.joint_topology, X_m.detach().clone(), X_t.detach().clone())
-                # glob_r_y, glob_t_y = FK(self.joint_topology, Y_m.detach().clone(), Y_t.detach().clone())
-                # xform_x = torch.cat([glob_r_x, glob_t_x[..., None]], dim=-1)
-                # xform_y = torch.cat([glob_r_y, glob_t_y[..., None]], dim=-1)
-                # angle_diff, translation_diff = transformation_diff(xform_x, xform_y)
+                glob_r_x, glob_t_x = FK(self.joint_topology, X_m.detach().clone(), X_t.detach().clone())
+                glob_r_y, glob_t_y = FK(self.joint_topology, Y_m.detach().clone(), Y_t.detach().clone())
+                xform_x = torch.cat([glob_r_x, glob_t_x[..., None]], dim=-1)
+                xform_y = torch.cat([glob_r_y, glob_t_y[..., None]], dim=-1)
+                angle_diff, translation_diff = transformation_diff(xform_x, xform_y)
 
-                # # quat_X = X_m[...,:-3].detach().clone().view(bs, self.window_size, self.num_joints, 4)
-                # # quat_Y = Y_m[...,:-3].detach().clone().view(bs, self.window_size, self.num_joints, 4)
-                # # R_x = quaternion_to_matrix(quat_X)
-                # # R_y = quaternion_to_matrix(quat_Y)
-                # # R = R_y.transpose(-2, -1) @ R_x
-                # # axis_angle = matrix_to_axis_angle(R)
-                # # angle_diff = axis_angle[..., -1] / np.pi * 180 # n x t x j
-                # total_angle_err += (torch.sum(torch.abs(angle_diff)) / np.pi * 180) / (self.window_size * self.num_joints)
+                # quat_X = X_m[...,:-3].detach().clone().view(bs, self.window_size, self.num_joints, 4)
+                # quat_Y = Y_m[...,:-3].detach().clone().view(bs, self.window_size, self.num_joints, 4)
+                # R_x = quaternion_to_matrix(quat_X)
+                # R_y = quaternion_to_matrix(quat_Y)
+                # R = R_y.transpose(-2, -1) @ R_x
+                # axis_angle = matrix_to_axis_angle(R)
+                # angle_diff = axis_angle[..., -1] / np.pi * 180 # n x t x j
+                total_angle_err += (torch.sum(torch.abs(angle_diff)) / np.pi * 180) / (self.window_size * self.num_joints)
 
-                # # jp_err = torch.norm(X_t.detach().clone() - Y_t.detach().clone(), 2, dim=-1) # n x j
-                # # total_jp_err += jp_err.sum() / self.num_joints
-                # total_jp_err += translation_diff.sum() / (self.window_size * self.num_joints)
+                # jp_err = torch.norm(X_t.detach().clone() - Y_t.detach().clone(), 2, dim=-1) # n x j
+                # total_jp_err += jp_err.sum() / self.num_joints
+                total_jp_err += translation_diff.sum() / (self.window_size * self.num_joints)
 
-                # mp_err = torch.norm(X_clean.detach().clone().view(-1, self.num_markers, 3) - Y.detach().clone().view(-1, self.num_markers, 3), 2, dim=-1) # (n x t) x m
-                # total_mp_err += mp_err.sum() / (self.num_markers * self.window_size)
+                mp_err = torch.norm(X_clean.detach().clone().view(-1, self.num_markers, 3) - Y.detach().clone().view(-1, self.num_markers, 3), 2, dim=-1) # (n x t) x m
+                total_mp_err += mp_err.sum() / (self.num_markers * self.window_size)
 
                 # tqdm_update = "Epoch={0:04d}, loss={1:.4f}, angle_diff={2:.4f}, mpe={4:4f}".format(epoch, loss.item(), torch.abs(angle_diff).mean(), jp_err.mean(), mp_err.mean())
                 tqdm_update = "Epoch={0:04d}, loss={1:.4f}, loss_c={2:.4f}, loss_t={3:.4f}, loss_m={4:4f}, loss_marker={5:4f}".format(epoch, loss.item(), loss_c.item(), loss_t.item(), loss_m.item(), loss_marker.item())
