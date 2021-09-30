@@ -32,8 +32,8 @@ class EncoderAgent(BaseAgent):
                         offset_channels=[1, 8], offset_joint_num=[self.num_joints, 7]).to(self.device)
 
     def load_data(self):
-        self.train_dataset = AE_Dataset(data_dir=self.cfg.train_filenames, window_size=self.window_size)
-        self.val_dataset = AE_Dataset(data_dir=self.cfg.val_filenames, window_size=self.window_size)
+        self.train_dataset = AE_Dataset(data_dir=self.cfg.train_filenames, window_size=self.window_size, overlap=self.cfg.overlap_frames)
+        self.val_dataset = AE_Dataset(data_dir=self.cfg.val_filenames, window_size=self.window_size, overlap=self.cfg.overlap_frames)
 
         self.train_steps = len(self.train_dataset) // self.batch_size
         self.val_steps = len(self.val_dataset) // self.batch_size
@@ -64,7 +64,7 @@ class EncoderAgent(BaseAgent):
         for batch_idx, (X_c, X_t, X_m) in enumerate(self.train_data_loader):
             bs = X_c.shape[0]
             n += bs
-            X_c, X_t, X_m = X_c.to(torch.float32).to(self.device), X_t.to(torch.float32).to(self.device),  X_m.to(torch.float32).to(self.device)
+            X_c, X_t, X_m = X_c.to(torch.float32).to(self.device), X_t.to(torch.float32).to(self.device), X_m.to(torch.float32).to(self.device)
             
             Y_c, Y_t, Y_m = self.run_batch(X_c, X_t, X_m)
 
@@ -106,6 +106,7 @@ class EncoderAgent(BaseAgent):
         # self.wandb_summary(True, total_loss, epoch)
 
         # tqdm_update = "Train: Epoch={0:04d},loss={1:.4f}".format(epoch, total_loss)
+        # tqdm_update = "Train: Epoch={0:04d}, loss={1:.4f}, loss_c={2:.4f}, loss_t={3:.4f}, loss_m={4:4f}".format(epoch, total_loss, total_loss_c, total_loss_t, total_loss_m)
         tqdm_update = "Train: Epoch={0:04d}, loss={1:.4f}, angle_err={2:4f}, jpe={3:4f}".format(epoch, total_loss, total_angle_err, total_jp_err)
         tqdm_batch.set_postfix_str(tqdm_update)
         tqdm_batch.update()
@@ -129,7 +130,7 @@ class EncoderAgent(BaseAgent):
             for batch_idx, (X_c, X_t, X_m) in enumerate(self.val_data_loader):
                 bs = X_c.shape[0]
                 n += bs
-                X_c, X_t, X_m = X_c.to(torch.float32).to(self.device), X_t.to(torch.float32).to(self.device),  X_m.to(torch.float32).to(self.device)
+                X_c, X_t, X_m = X_c.to(torch.float32).to(self.device), X_t.to(torch.float32).to(self.device), X_m.to(torch.float32).to(self.device)
 
                 Y_c, Y_t, Y_m = self.run_batch(X_c, X_t, X_m)
 
@@ -167,6 +168,7 @@ class EncoderAgent(BaseAgent):
         # self.wandb_summary(False, total_loss, epoch)
 
         # tqdm_update = "Val  : Epoch={0:04d},loss={1:.4f}".format(epoch, total_loss)
+        # tqdm_update = "Val:   Epoch={0:04d}, loss={1:.4f}, loss_c={2:.4f}, loss_t={3:.4f}, loss_m={4:4f}".format(epoch, total_loss, total_loss_c, total_loss_t, total_loss_m)
         tqdm_update = "Val: Epoch={0:04d}, loss={1:.4f}, angle_err={2:4f}, jpe={3:4f}".format(epoch, total_loss, total_angle_err, total_jp_err)
         tqdm_batch.set_postfix_str(tqdm_update)
         tqdm_batch.update()

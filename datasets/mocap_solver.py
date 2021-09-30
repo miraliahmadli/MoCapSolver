@@ -58,7 +58,7 @@ def read_file_ms(fname):
 
 
 class AE_Dataset(Dataset):
-    def __init__(self, data_dir, window_size=64):
+    def __init__(self, data_dir, window_size=64, overlap=32):
         self.window_size = window_size
         if isinstance(data_dir, list):
             fnames = data_dir
@@ -76,7 +76,7 @@ class AE_Dataset(Dataset):
 
         self.indices = []
         for f_idx in range(len(self.X_m)):
-            sublist = [(f_idx, pivot) for pivot in range(self.X_m[f_idx].shape[0] - self.window_size)]
+            sublist = [(f_idx, pivot) for pivot in range(0, self.X_m[f_idx].shape[0] - self.window_size, self.window_size - overlap)]
             self.indices += sublist
 
     def __len__(self):
@@ -84,15 +84,15 @@ class AE_Dataset(Dataset):
 
     def __getitem__(self, index):
         f_idx, pivot = self.indices[index]
-        X_c = self.X_c[f_idx] # m x j x 3
-        X_t = self.X_t[f_idx] # j x 3
-        X_m = self.X_m[f_idx][pivot : pivot + self.window_size] # T x (J*4 + 3)
+        X_c = self.X_c[f_idx].clone() # m x j x 3
+        X_t = self.X_t[f_idx].clone() # j x 3
+        X_m = self.X_m[f_idx][pivot : pivot + self.window_size].clone() # T x (J*4 + 3)
 
         return X_c, X_t, X_m
 
 
 class MS_Dataset(Dataset):
-    def __init__(self, data_dir, window_size=64, local_ref_markers=[3, 7, 11, 21, 32, 36, 46, 54], local_ref_joint=3):
+    def __init__(self, data_dir, window_size=64, overlap=32, local_ref_markers=[3, 7, 11, 21, 32, 36, 46, 54], local_ref_joint=3):
         self.window_size = window_size
         self.local_ref_markers = local_ref_markers
         if isinstance(data_dir, list):
@@ -117,7 +117,7 @@ class MS_Dataset(Dataset):
 
         self.indices = []
         for f_idx in range(len(self.X_m)):
-            sublist = [(f_idx, pivot) for pivot in range(0, self.X_m[f_idx].shape[0] - self.window_size, self.window_size // 2)]
+            sublist = [(f_idx, pivot) for pivot in range(0, self.X_m[f_idx].shape[0] - self.window_size, self.window_size - overlap)]
             self.indices += sublist
 
     def __len__(self):

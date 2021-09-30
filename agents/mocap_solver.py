@@ -49,9 +49,9 @@ class MS_Agent(BaseAgent):
         #         exit()
 
     def load_data(self):
-        self.train_dataset = MS_Dataset(data_dir=self.cfg.train_filenames, window_size=self.window_size, 
+        self.train_dataset = MS_Dataset(data_dir=self.cfg.train_filenames, window_size=self.window_size, overlap=self.cfg.overlap_frames, 
                                         local_ref_markers=self.cfg.local_ref_markers, local_ref_joint=self.cfg.local_ref_joint)
-        self.val_dataset = MS_Dataset(data_dir=self.cfg.val_filenames, window_size=self.window_size, 
+        self.val_dataset = MS_Dataset(data_dir=self.cfg.val_filenames, window_size=self.window_size, overlap=self.cfg.overlap_frames, 
                                         local_ref_markers=self.cfg.local_ref_markers, local_ref_joint=self.cfg.local_ref_joint)
 
         self.train_steps = len(self.train_dataset) // self.batch_size
@@ -62,6 +62,24 @@ class MS_Agent(BaseAgent):
         self.val_data_loader = DataLoader(self.val_dataset, batch_size=self.batch_size,\
                                             shuffle=False, num_workers=8, pin_memory=True)
 
+    def smooth_batch(self, X):
+        bs = X.shape[0]
+        overlap = self.cfg.overlap_frames
+        overlap_ = self.window_size - overlap
+
+        frames = bs * self.window_size - (bs - 1)*overlap
+        X_res = torch.zeros((frames, self.num_markers, 3), device=X.device, dtype=torch.float32)
+        X_res[:overlap_] = 2*X[0, :overlap_]
+        X_res[-overlap:] = 2*X[-1, -overlap:]
+        st = 0
+
+        for i in range(1, bs):
+            st += overlap_
+            X_res[st : st + overlap] = X[i-1, -overlap:] + X[i, :overlap]
+            X_res[st + overlap : st + overlap_] = 2*X[i, overlap : overlap_]
+
+        return X_res
+
     def run_batch(self, X, F, test=False):
         Y_c, Y_t, Y_m = self.model(X)
 
@@ -71,21 +89,8 @@ class MS_Agent(BaseAgent):
         Y = LBS_motion(self.skinning_w, Y_c, j_xform)
 
         if test:
-            bs = X.shape[0]
-            X_all = torch.zeros((bs + 1, self.window_size // 2, self.num_markers, 3), device=X.device, dtype=torch.float32)
-            X_all[0] = Y[0, :self.window_size // 2]
-            X_all[-1] = Y[-1, -self.window_size // 2:]
-            for i in range(1, bs):
-                X_all[i] = (Y[i-1, -self.window_size // 2: ] + Y[i, :self.window_size // 2]) / 2
-            X_all = X_all.view(-1, self.num_markers, 3)
-
-
-            X_all_gt = torch.zeros((bs + 1, self.window_size // 2, self.num_markers, 3), device=X.device, dtype=torch.float32)
-            X_all_gt[0] = X[0, :self.window_size // 2]
-            X_all_gt[-1] = X[-1, -self.window_size // 2:]
-            for i in range(1, bs):
-                X_all_gt[i] = (X[i-1, -self.window_size // 2: ] + X[i, :self.window_size // 2]) / 2
-            X_all_gt = X_all_gt.view(-1, self.num_markers, 3)
+            X_all = self.smooth_batch(Y)
+            X_all_gt = self.smooth_batch(X)
             Xs = 10 * torch.cat((X_all_gt.unsqueeze(0), X_all.unsqueeze(0)), 0).detach().cpu().numpy()
             print(bs)
             print(X_all.shape, X_all_gt.shape)
@@ -238,7 +243,7 @@ class MS_Agent(BaseAgent):
         return total_loss, message
 
     def test_one_animation(self):
-        self.test_dataset = MS_Dataset(data_dir=self.cfg.test_filenames, window_size=self.window_size, 
+        self.test_dataset = MS_Dataset(data_dir=self.cfg.test_filenames, window_size=self.window_size, overlap=self.cfg.overlap_frames, 
                                     local_ref_markers=self.cfg.local_ref_markers, local_ref_joint=self.cfg.local_ref_joint)
 
         self.test_steps = len(self.test_dataset)

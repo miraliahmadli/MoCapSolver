@@ -238,12 +238,12 @@ class MarkerEncoder(nn.Module):
             self.layers.append(nn.Sequential(*seq))
 
     def forward(self, x, offset=None):
-        x = x.view(x.shape[0], -1)
+        out = x.reshape(x.shape[0], -1)
         for i, layer in enumerate(self.layers):
             if self.skeleton_info == "concat" and offset is not None:
                 self.dense_blocks[i].set_offset(offset[i])
-            x = layer(x)
-        return x
+            out = layer(out)
+        return out
 
 
 # decoder for dynamic part, i.e. motion + offset part
@@ -279,12 +279,12 @@ class MarkerDecoder(nn.Module):
                 self.layers.append(nn.Sequential(*seq))
 
     def forward(self, x, offset=None):
-        x = x.view(x.shape[0], -1)
+        out = x.reshape(x.shape[0], -1)
         for i, layer in enumerate(self.layers):
             if i < len(self.dense_blocks) and self.skeleton_info == "concat" and offset is not None:
                 self.dense_blocks[i].set_offset(offset[i])
-            x = layer(x)
-        return x
+            out = layer(out)
+        return out
 
     def freeze_params(self):
         for layer in self.layers:
