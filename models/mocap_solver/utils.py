@@ -10,34 +10,34 @@ class ResidualBlock(nn.Module):
         super(ResidualBlock, self).__init__()
         self.bn = nn.BatchNorm1d(input_size)
         self.dense = nn.Linear(input_size, hidden_size)
-        self.relu = nn.ReLU()
+        # self.activation = nn.ReLU()
+        self.activation = nn.LeakyReLU(0.5)
 
     def forward(self, x):
-        # res = self.bn(x)
-        out = self.relu(x)
-        out = self.dense(out)
-        out += x
-        return out
+        out = self.bn(x)
+        out = self.activation(out)
+        res = out + self.dense(out)
+        return res
 
 
 class DenseBlock(nn.Module):
     def __init__(self, input_size: int, hidden_size: int,
                 add_offset=False, offset_dim=None):
         super(DenseBlock, self).__init__()
-        self.dense = nn.Linear(input_size, hidden_size)
         self.add_offset = add_offset and (offset_dim is not None)
-        if self.add_offset:
-            self.offset_enc = nn.Linear(offset_dim, hidden_size)
+        if self.add_offset: input_size += offset_dim
+        self.dense = nn.Linear(input_size, hidden_size)
 
     def set_offset(self, offset):
         if not self.add_offset: raise Exception('Wrong Combination of Parameters')
         self.offset = offset.view(offset.shape[0], -1)
 
     def forward(self, x):
-        out = self.dense(x)
         if self.add_offset:
-            offset_res = self.offset_enc(self.offset)
-            out += offset_res / 100
+            input = torch.cat((x, self.offset), 1)
+        else:
+            input = x
+        out = self.dense(input)
         return out
 
 
@@ -46,14 +46,17 @@ class MSBlock(nn.Module):
         super(MSBlock, self).__init__()
         self.res_block_1 = ResidualBlock(hidden_size, hidden_size)
         self.res_block_2 = ResidualBlock(hidden_size, hidden_size)
+        self.res_block_3 = ResidualBlock(hidden_size, hidden_size)
         self.dense = nn.Linear(hidden_size, out_size)
-        self.relu = nn.ReLU()
+        # self.activation = nn.ReLU()
+        self.activation = nn.LeakyReLU(0.5)
 
     def forward(self, x):
         x = x.view(x.shape[0], -1)
         out = self.res_block_1(x)
         out = self.res_block_2(out)
-        out = self.relu(out)
+        out = self.res_block_3(out)
+        out = self.activation(out)
         out = self.dense(out)
         return out
 

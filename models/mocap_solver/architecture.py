@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 from models.mocap_solver.enc_and_dec import Encoder, Decoder
-from models.mocap_solver.utils import ResidualBlock, DenseBlock, MSBlock
+from models.mocap_solver.utils import ResidualBlock, MSBlock
 
 
 class AE(nn.Module):
@@ -38,8 +38,8 @@ class MocapSolver(nn.Module):
         seq = []
         dense = nn.Linear(num_markers*window_size*3, hidden_size)
         seq.append(dense)
-        lerelu = nn.LeakyReLU(negative_slope=0.2)
-        seq.append(lerelu)
+        # activation = nn.LeakyReLU(negative_slope=0.5)
+        # seq.append(activation)
         for i in range(num_res_layers):
             res_block = ResidualBlock(hidden_size, hidden_size)
             seq.append(res_block)

@@ -31,7 +31,8 @@ class StaticEncoder(nn.Module):
         self.pooling_list.append(pool.pooling_list)
         self.topologies.append(pool.new_edges)
 
-        activation = nn.ReLU()
+        activation = nn.LeakyReLU(negative_slope=0.2)
+        # activation = nn.ReLU()
         seq.append(activation)
 
         self.encoder = nn.Sequential(*seq)
@@ -56,8 +57,9 @@ class StaticDecoder(nn.Module):
         unpool = SkeletonUnpool(enc.pooling_list[-1], in_channels // len(neighbor_list))
         seq.append(unpool)
 
-        activation = nn.LeakyReLU(negative_slope=0.2)
-        seq.append(activation)
+        # activation = nn.LeakyReLU(negative_slope=0.2)
+        # activation = nn.ReLU()
+        # seq.append(activation)
 
         seq.append(SkeletonLinear(neighbor_list, in_channels=in_channels,
                                 out_channels=out_channels, extra_dim1=False))
@@ -77,7 +79,7 @@ class StaticDecoder(nn.Module):
 # eoncoder for dynamic part, i.e. motion + offset part
 class DynamicEncoder(nn.Module):
     def __init__(self, edges, num_layers=2, skeleton_dist=1,
-                kernel_size=15, padding_mode="zeros",
+                kernel_size=15, padding_mode="reflection",
                 skeleton_info='concat', offset_channels=[], offset_joint_num=[]):
         super(DynamicEncoder, self).__init__()
         self.topologies = [edges]
@@ -126,7 +128,9 @@ class DynamicEncoder(nn.Module):
             pool = SkeletonPool(edges=self.topologies[i], pooling_mode="mean",
                                 channels_per_edge=out_channels // len(neighbor_list), last_pool=last_pool)
             seq.append(pool)
-            seq.append(nn.ReLU())
+            activation = nn.LeakyReLU(negative_slope=0.2)
+            # activation = nn.ReLU()
+            seq.append(activation)
             self.layers.append(nn.Sequential(*seq))
 
             self.topologies.append(pool.new_edges)
@@ -150,7 +154,7 @@ class DynamicEncoder(nn.Module):
 class DynamicDecoder(nn.Module):
     def __init__(self, enc, num_layers=2, skeleton_dist=1,
                 kernel_size=15, skeleton_info='concat', 
-                upsampling="linear", padding_mode="zeros"):
+                upsampling="linear", padding_mode="reflection"):
         super(DynamicDecoder, self).__init__()
         self.layers = nn.ModuleList()
         self.unpools = nn.ModuleList()
@@ -230,7 +234,9 @@ class MarkerEncoder(nn.Module):
             seq.append(dense)
             self.dense_blocks.append(dense)
 
-            seq.append(nn.ReLU())
+            # activation = nn.LeakyReLU(negative_slope=0.5)
+            # activation = nn.ReLU()
+            # seq.append(activation)
 
             res_block = ResidualBlock(hidden_size, hidden_size)
             seq.append(res_block)
@@ -266,14 +272,20 @@ class MarkerDecoder(nn.Module):
             dense = DenseBlock(self.hidden_size, self.hidden_size, add_offset, enc.offset_dims[-i-1])
             seq.append(dense)
             self.dense_blocks.append(dense)
-            seq.append(nn.ReLU())
+
+            # activation = nn.LeakyReLU(negative_slope=0.5)
+            # activation = nn.ReLU()
+            # seq.append(activation)
+
             res_block = ResidualBlock(self.hidden_size, self.hidden_size)
             seq.append(res_block)
 
             self.layers.append(nn.Sequential(*seq))
 
             if i == num_layers - 1:
-                seq.append(nn.ReLU())
+                activation = nn.LeakyReLU(negative_slope=0.5)
+                # activation = nn.ReLU()
+                seq.append(activation)
                 dense = DenseBlock(self.hidden_size, self.output_size, False)
                 seq.append(dense)
                 self.layers.append(nn.Sequential(*seq))
