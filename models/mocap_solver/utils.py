@@ -152,7 +152,7 @@ class Motion_loss(nn.Module):
         rotation_y, position_y = split_raw_motion(Y_m)
 
         loss_rot = self.b1 * self.rot_crit(rotation_y, rotation_x) + torch.abs(position_x - position_y).mean()
-        
+
         _, global_tr_y = FK(self.topology, Y_m, Y_t)
         _, global_tr_x = FK(self.topology, X_m, X_t)
         loss_fk = self.b2 * self.fk_crit(global_tr_y, global_tr_x)

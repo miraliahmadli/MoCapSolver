@@ -73,7 +73,7 @@ class MSD(nn.Module):
         super(MSD, self).__init__()
         self.decoder = AE(edges, num_markers, num_joints, 1024, offset_dims=[72, 168], 
                                offset_channels=[1, 8], offset_joint_num=[num_joints, 7]).decoder
-        self.mocap_solver = MocapSolver(num_markers, window_size, 1024,
+        self.mocap_solver = MocapSolver(num_markers, window_size, 2048,
                                 use_motion=True, use_marker_conf=True, use_skeleton=True)
 
         self.num_joints = num_joints
