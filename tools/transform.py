@@ -182,7 +182,7 @@ def transformation_diff(Y_hat, Y):
     R = R_hat @ Y[..., :3]
     translation_diff = torch.norm(t - t_hat, p=2, dim=-1)
     axis_angle = matrix_to_axis_angle(R)
-    angle_diff = axis_angle[..., -1]
+    angle_diff = torch.norm(axis_angle, 2)
 
     return angle_diff, translation_diff
 
