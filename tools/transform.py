@@ -179,10 +179,13 @@ def quaternion_to_axis_angle(quaternions):
 def transformation_diff(Y_hat, Y):
     R_hat, t_hat = Y_hat[...,:3].transpose(-2, -1), Y_hat[..., 3]
     t = Y[..., 3]
-    R = R_hat @ Y[..., :3]
     translation_diff = torch.norm(t - t_hat, p=2, dim=-1)
+
+    R = R_hat @ Y[..., :3]
     axis_angle = matrix_to_axis_angle(R)
-    angle_diff = torch.norm(axis_angle, 2)
+    angle_diff = torch.norm(axis_angle, p=2, dim=-1)
+    angle_diff[angle_diff > math.pi] -= 2*math.pi
+    angle_diff = torch.abs(angle_diff)
 
     return angle_diff, translation_diff
 
