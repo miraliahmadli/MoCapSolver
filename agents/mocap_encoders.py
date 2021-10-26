@@ -45,7 +45,7 @@ class EncoderAgent(BaseAgent):
 
     def run_batch(self, X_c, X_t, X_m):
         bs = X_c.shape[0]
-        Y_c, Y_t, Y_m = self.model(X_c.view(bs, -1), X_t.view(bs, -1), X_m.view(bs, -1, self.window_size))
+        Y_c, Y_t, Y_m = self.model(X_c.view(bs, -1), X_t.view(bs, -1), X_m.transpose(-1, -2))
         Y_c = Y_c.view(bs, self.num_markers, self.num_joints, 3)
         Y_t = Y_t.view(bs, self.num_joints, 3)
         return Y_c, Y_t, Y_m

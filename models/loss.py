@@ -18,12 +18,17 @@ class HuberLoss(nn.Module):
 
 
 class weighted_L1_loss(nn.Module):
-    def __init__(self, weights, mode="sum"):
+    def __init__(self, weights, mode="sum", loss_fn="SmoothL1"):
         super(weighted_L1_loss, self).__init__()
         self.weights = weights
-        # self.crit = HuberLoss()
-        self.crit = nn.SmoothL1Loss(reduction=mode)
-        # self.crit = nn.L1Loss(reduction=mode)
+        if loss_fn == "Huber":
+            self.crit = HuberLoss()
+        elif loss_fn == "SmoothL1":
+            self.crit = nn.SmoothL1Loss(reduction=mode)
+        elif loss_fn == "MSE":
+            self.crit = nn.MSELoss()
+        else:
+            self.crit = nn.L1Loss(reduction=mode)
 
     def forward(self, gt, pred):
         input = self.weights * pred

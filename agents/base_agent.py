@@ -110,12 +110,14 @@ class BaseAgent(ABC):
             return ExponentialLR(optimizer=self.optimizer, gamma=self.cfg.lr_scheduler.ExponentialLR.decay)
         elif scheduler == "MultiStepLR":
             milestones = list(range(0, self.cfg.epochs, self.cfg.lr_scheduler.MultiStepLR.range))
-            return MultiStepLR(self.optimizer, milestones=milestones, gamma=0.1, last_epoch=last_epoch-1)
+            return MultiStepLR(self.optimizer, milestones=milestones, 
+                            gamma=self.cfg.lr_scheduler.MultiStepLR.decay, last_epoch=last_epoch-1)
 
     def build_optimizer(self):
         optimizer = self.cfg.optimizer.used.lower()
         if optimizer == "adam":
-            return torch.optim.Adam(self.model.parameters(), lr=self.cfg.optimizer.Adam.lr)
+            return torch.optim.Adam(self.model.parameters(), lr=self.cfg.optimizer.Adam.lr, 
+                                    weight_decay=self.cfg.optimizer.Adam.weight_decay)
         elif optimizer == "sgd":
             return torch.optim.SGD(self.model.parameters(), lr=self.cfg.optimizer.SGD.lr, weight_decay=self.cfg.optimizer.SGD.weight_decay)
         elif optimizer == "amsgrad":

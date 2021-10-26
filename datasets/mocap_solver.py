@@ -165,7 +165,7 @@ def test():
     bs = 256
     import os
     from torch.utils.data import DataLoader
-    fnames = [os.path.join("dataset/synthetic", path) for path in os.listdir("dataset/synthetic")]
+    fnames = [os.path.join("dataset/syn_new_local/train_sample_data", path) for path in os.listdir("dataset/syn_new_local/train_sample_data")]
     # offsets, skeleton, motion_quat, raw_markers = read_file_ms(fnames[0])
 
     # print(offsets.shape)
@@ -174,25 +174,27 @@ def test():
     # print(raw_markers.shape)
     # return
     # print(fnames[0])
-    dataset = MS_Dataset(fnames[30:32])
+    # dataset = MS_Dataset(fnames[30:32])
+    dataset = AE_Dataset(fnames[30:32])
     # print(len(dataset))
     
     data_loader = DataLoader(dataset, batch_size=bs,
                             shuffle=True, num_workers=8, pin_memory=True)
-    X_c, X_t, X_m, norm_markers, F = next(iter(data_loader)) 
-    # print(X_c.shape)
-    # print(X_t.shape)
-    # print(X_m.shape)
+    # X_c, X_t, X_m, norm_markers, F = next(iter(data_loader)) 
+    X_c, X_t, X_m = next(iter(data_loader)) 
+    print(X_c.shape)
+    print(X_t.shape)
+    print(X_m.shape)
     # print(norm_markers.shape)
     # print(F.shape)
-    root_quat = X_m[..., :4]
-    root_quat_to_mat = quaternion_to_matrix(root_quat)
-    root_tr = X_m[..., -3: , None]
+    # root_quat = X_m[..., :4]
+    # root_quat_to_mat = quaternion_to_matrix(root_quat)
+    # root_tr = X_m[..., -3: , None]
 
     # print(root_quat_to_mat.shape)
     # print(root_tr.shape)
-    from tools.viz import visualize
-    visualize(Xs=norm_markers[0].cpu().numpy()[None, ...] * 10.0)
+    # from tools.viz import visualize
+    # visualize(Xs=norm_markers[0].cpu().numpy()[None, ...] * 10.0)
 
 
 if __name__ == "__main__":
