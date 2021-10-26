@@ -58,7 +58,8 @@
             "weight_decay": 0.01
         },
         "Adam": {
-            "lr": 0.001
+            "lr": 0.001,
+            "weight_decay": 0
         },
         "AmsGrad": {
             "lr": 1e-4,

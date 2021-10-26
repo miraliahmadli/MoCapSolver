@@ -10,6 +10,9 @@
     "model_dir": "logs/ms_all_3/model.pth",
     "train_sum": "logs/ms_all_3/tensorboard/train",
     "val_sum": "logs/ms_all_3/tensorboard/val",
+    "ts_model": "logs/ts/model.pth",
+    "mc_model": "logs/mc4/model.pth",
+    "motion_model": "logs/motion2/model.pth",
 
     "use_gpu": true,
     "gpu_idx": 0,
@@ -31,12 +34,14 @@
 
     "model":{
         "ae": {
+            "hidden_size":1024,
             "offset_dims": [72, 168]
         },
-        "hidden_size":1024,
+        "hidden_size":2048,
         "num_layers": 4,
-        "train_decoder": true,
-        "decoder_dir": ""
+        "train_ts_decoder": false,
+        "train_mc_decoder": false,
+        "train_motion_decoder": true
     },
 
     "training_settings":{
@@ -52,13 +57,14 @@
 
     "optimizer":{
         "available": ["SGD", "Adam", "AmsGrad"],
-        "used": "SGD",
+        "used": "Adam",
         "SGD": {
             "lr": 0.01,
             "weight_decay": 0.01
         },
         "Adam": {
-            "lr": 0.001
+            "lr": 2e-4,
+            "weight_decay": 1e-6
         },
         "AmsGrad": {
             "lr": 1e-4,
@@ -73,11 +79,12 @@
             "decay": 0.99
         },
         "MultiStepLR":{
-            "range": 250
+            "range": 100,
+            "decay": 0.1
         }
     },
 
     "loss": {
-        "alphas": [1, 3, 4, 8]
+        "alphas": [10, 30, 40, 80]
     }
 }
