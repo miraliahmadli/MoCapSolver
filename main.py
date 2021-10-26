@@ -10,6 +10,9 @@ from agents.robust_solver import RS_Agent
 from agents.mocap_solver import MS_Agent
 from agents.mocap_encoders import EncoderAgent
 from agents.marker_reliability import MR_Agent
+from agents.ts_encoder import TS_Agent
+from agents.mc_encoder import MC_Agent
+from agents.motion_encoder import Motion_Agent
 
 
 def parse_arguments():
@@ -50,6 +53,12 @@ def main():
         agent = EncoderAgent(cfg, test, sweep)
     elif model == "Normalizer":
         agent = MR_Agent(cfg, test, sweep)
+    elif model == "TS":
+        agent = TS_Agent(cfg, test, sweep)
+    elif model == "MC":
+        agent = MC_Agent(cfg, test, sweep)
+    elif model == "Motion":
+        agent = Motion_Agent(cfg, test, sweep)
 
     if test:
         agent.test_one_animation()
