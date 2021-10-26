@@ -71,9 +71,9 @@ class StaticDecoder(nn.Module):
         out = self.decoder(input)
         return out
 
-    def freeze_params(self):
+    def change_param_states(self, state=False):
         for param in self.decoder.parameters():
-            param.requires_grad = False
+            param.requires_grad = state
 
 
 # eoncoder for dynamic part, i.e. motion + offset part
@@ -204,10 +204,10 @@ class DynamicDecoder(nn.Module):
 
         return input
 
-    def freeze_params(self):
+    def change_param_states(self, state=False):
         for layer in self.layers:
             for param in layer.parameters():
-                param.requires_grad = False
+                param.requires_grad = state
 
 
 # eoncoder for dynamic part, i.e. motion + offset part
@@ -251,6 +251,10 @@ class MarkerEncoder(nn.Module):
             out = layer(out)
         return out
 
+    def change_param_states(self, state=False):
+        for layer in self.layers:
+            for param in layer.parameters():
+                param.requires_grad = state
 
 # decoder for dynamic part, i.e. motion + offset part
 class MarkerDecoder(nn.Module):
@@ -298,10 +302,10 @@ class MarkerDecoder(nn.Module):
             out = layer(out)
         return out
 
-    def freeze_params(self):
+    def change_param_states(self, state=False):
         for layer in self.layers:
             for param in layer.parameters():
-                param.requires_grad = False
+                param.requires_grad = state
 
 
 class Encoder(nn.Module):
@@ -355,10 +359,10 @@ class Decoder(nn.Module):
 
         return Y_c, Y_t, Y_m
     
-    def freeze_params(self):
-        self.static_dec.freeze_params()
-        self.dynamic_dec.freeze_params()
-        self.marker_dec.freeze_params()
+    def change_param_states(self, state=False):
+        self.static_dec.change_param_states(state)
+        self.dynamic_dec.change_param_states(state)
+        self.marker_dec.change_param_states(state)
 
 
 def test_models():

@@ -1,0 +1,55 @@
+{
+    "project": "MocapEncoder",
+    "entity": "mocap",
+
+    "train_filenames": "data/ms_train.txt",
+    "val_filenames": "data/ms_val.txt",
+    "test_filenames": "data/synthetic_test.txt",
+
+    "logs_dir": "logs/ts/",
+    "model_dir": "logs/ts/model.pth",
+    "train_sum": "logs/ts/tensorboard/train",
+    "val_sum": "logs/ts/tensorboard/val",
+
+    "use_gpu": true,
+    "gpu_idx": 0,
+    "epochs": 100000,
+    "batch_size": 512,
+    "num_markers": 56,
+    "num_joints": 24,
+
+    "hierarchy": "dataset/hierarchy_synthetic_bfs.txt",
+    "joint_weights": [4, 6, 6, 4, 6, 6, 4, 10, 10, 4, 10, 10, 8, 4, 4, 8, 4, 4, 6, 6, 10, 10, 10, 10],
+
+    "optimizer":{
+        "available": ["SGD", "Adam", "AmsGrad"],
+        "used": "Adam",
+        "SGD": {
+            "lr": 0.001,
+            "weight_decay": 0.01
+        },
+        "Adam": {
+            "lr": 2e-4,
+            "weight_decay": 0
+        },
+        "AmsGrad": {
+            "lr": 1e-4,
+            "weight_decay": 0.01
+        }
+    },
+
+    "lr_scheduler": {
+        "available": ["ExponentialLR", "MultiStepLR"],
+        "used": "MultiStepLR",
+        "ExponentialLR":{
+            "decay": 0.96
+        },
+        "MultiStepLR":{
+            "range": 100000
+        }
+    },
+
+    "loss": {
+        "betas": [1, 100, 1, 2]
+    }
+}

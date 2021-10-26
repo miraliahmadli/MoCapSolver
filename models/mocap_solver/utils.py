@@ -6,9 +6,9 @@ from tools.transform import quaternion_to_matrix
 
 
 class ResidualBlock(nn.Module):
-    def __init__(self, input_size: int, hidden_size: int):
+    def __init__(self, input_size: int, hidden_size: int, track_running_stats=False):
         super(ResidualBlock, self).__init__()
-        self.bn = nn.BatchNorm1d(input_size)
+        self.bn = nn.BatchNorm1d(input_size, track_running_stats=track_running_stats)
         self.dense = nn.Linear(input_size, hidden_size)
         # self.activation = nn.ReLU()
         self.activation = nn.LeakyReLU(0.5)
@@ -44,9 +44,9 @@ class DenseBlock(nn.Module):
 class MSBlock(nn.Module):
     def __init__(self, hidden_size: int, out_size: int):
         super(MSBlock, self).__init__()
-        self.res_block_1 = ResidualBlock(hidden_size, hidden_size)
-        self.res_block_2 = ResidualBlock(hidden_size, hidden_size)
-        self.res_block_3 = ResidualBlock(hidden_size, hidden_size)
+        self.res_block_1 = ResidualBlock(hidden_size, hidden_size, True)
+        self.res_block_2 = ResidualBlock(hidden_size, hidden_size, True)
+        self.res_block_3 = ResidualBlock(hidden_size, hidden_size, True)
         self.dense = nn.Linear(hidden_size, out_size)
         # self.activation = nn.ReLU()
         self.activation = nn.LeakyReLU(0.5)
@@ -145,33 +145,36 @@ class Motion_loss(nn.Module):
         self.b2 = b2
         self.topology = joint_topology
         self.rot_crit = weighted_L1_loss(joint_weights, mode="mean")
-        self.fk_crit = weighted_L1_loss(joint_weights, mode="mean")
+        self.pos_crit = torch.nn.MSELoss()
+        self.fk_tr_crit = weighted_L1_loss(joint_weights, mode="mean")
+        self.fk_rot_crit = torch.nn.MSELoss()
 
     def forward(self, Y_m, X_m, Y_t, X_t):
         rotation_x, position_x = split_raw_motion(X_m)
         rotation_y, position_y = split_raw_motion(Y_m)
 
-        loss_rot = self.b1 * self.rot_crit(rotation_y, rotation_x) + torch.abs(position_x - position_y).mean()
+        loss_rot = self.b1 * (self.rot_crit(rotation_y, rotation_x) +\
+                                self.pos_crit(position_y, position_x))
 
-        _, global_tr_y = FK(self.topology, Y_m, Y_t)
-        _, global_tr_x = FK(self.topology, X_m, X_t)
-        loss_fk = self.b2 * self.fk_crit(global_tr_y, global_tr_x)
+        global_rot_y, global_tr_y = FK(self.topology, Y_m, Y_t)
+        global_rot_x, global_tr_x = FK(self.topology, X_m, X_t)
+        loss_fk = self.b2 * (self.fk_tr_crit(global_tr_y, global_tr_x) +\
+                                self.fk_rot_crit(global_rot_y, global_rot_x))
         loss = loss_rot + loss_fk
         return loss
 
 
 class Offset_loss(nn.Module):
-    def __init__(self, marker_weights, offset_weights, b3, b4, weights):
+    def __init__(self, marker_weights, offset_weights, b3, b4):
         super(Offset_loss, self).__init__()
         self.b3 = b3
         self.b4 = b4
-        self.w = weights
         self.l1_crit = weighted_L1_loss(offset_weights, mode="mean")
         self.lbs_crit = weighted_L1_loss(marker_weights, mode="mean")
 
-    def forward(self, Y_c, X_c, Y_t, X_t):
+    def forward(self, Y_c, X_c, Y, X):
         loss_c = self.b3 * self.l1_crit(Y_c, X_c)
-        loss_lbs = self.b4 * self.lbs_crit(LBS_skel(self.w, Y_c, Y_t), LBS_skel(self.w, X_c, X_t))
+        loss_lbs = self.b4 * self.lbs_crit(Y, X)
         loss = loss_c + loss_lbs
         return loss
 
@@ -180,14 +183,17 @@ class AE_loss(nn.Module):
     def __init__(self, joint_topology, marker_weights, joint_weights, offset_weights, betas, weight_assignment):
         super(AE_loss, self).__init__()
         b1, b2, b3, b4 = betas
-        self.crit_c = Offset_loss(marker_weights, offset_weights, b3, b4, weight_assignment)
+        self.w = weight_assignment
+        self.crit_c = Offset_loss(marker_weights, offset_weights, b3, b4)
         self.crit_t = weighted_L1_loss(joint_weights, mode="mean")
         self.crit_m = Motion_loss(joint_topology, joint_weights, b1, b2)
 
     def forward(self, Y, X):
         Y_c, Y_t, Y_m = Y
         X_c, X_t, X_m = X
-        loss_c = self.crit_c(Y_c, X_c, Y_t, X_t)
+        Y_, X_ = LBS_skel(self.w, Y_c, Y_t), LBS_skel(self.w, X_c, X_t)
+
+        loss_c = self.crit_c(Y_c, X_c, Y_, X_)
         loss_t = self.crit_t(Y_t, X_t)
         loss_m = self.crit_m(Y_m, X_m, Y_t, X_t)
         loss = loss_c + loss_t + loss_m
@@ -195,13 +201,17 @@ class AE_loss(nn.Module):
 
 
 class MS_loss(nn.Module):
-    def __init__(self, joint_weights, marker_weights, offset_weights, alphas):
+    def __init__(self, joint_topology, joint_weights, marker_weights, offset_weights, alphas):
         super(MS_loss, self).__init__()
         self.a1, self.a2, self.a3, self.a4 = alphas
+        self.topology = joint_topology
         self.crit = weighted_L1_loss(marker_weights, mode="mean")
         self.crit_c = weighted_L1_loss(offset_weights, mode="mean")
         self.crit_t = weighted_L1_loss(joint_weights, mode="mean")
-        self.crit_m = weighted_L1_loss(joint_weights, mode="mean")
+        self.crit_m_rot = weighted_L1_loss(joint_weights, mode="mean")
+        self.crit_m_tr = weighted_L1_loss(1, loss_fn="MSE")
+        self.fk_tr_crit = weighted_L1_loss(joint_weights, mode="mean")
+        self.fk_rot_crit = weighted_L1_loss(1, mode="mean", loss_fn="MSE")
 
     def forward(self, Y, X):
         Y_c, Y_t, Y_m, Y_ = Y
@@ -209,11 +219,16 @@ class MS_loss(nn.Module):
         rotation_x, position_x = split_raw_motion(X_m)
         rotation_y, position_y = split_raw_motion(Y_m)
 
+        global_rot_y, global_tr_y = FK(self.topology, Y_m, Y_t)
+        global_rot_x, global_tr_x = FK(self.topology, X_m, X_t)
+
         loss_marker = self.crit(Y_, X_)
         loss_c = self.crit_c(Y_c, X_c)
         loss_t = self.crit_t(Y_t, X_t)
-        loss_m = self.crit_m(rotation_y, rotation_x) + torch.abs(position_x - position_y).mean()
+        loss_m = self.crit_m_rot(rotation_y, rotation_x) + self.crit_m_tr(position_y, position_x)
+        loss_joint = 10 * (self.fk_tr_crit(global_tr_y, global_tr_x) +\
+                            self.fk_rot_crit(global_rot_y, global_rot_x))
 
 
-        loss = self.a1 * loss_marker + self.a2 * loss_c + self.a3 * loss_t + self.a4 * loss_m
+        loss = self.a1 * loss_marker + self.a2 * loss_c + self.a3 * loss_t + self.a4 * loss_m + loss_joint
         return loss, loss_c, loss_t, loss_m, loss_marker
