@@ -11,7 +11,7 @@ from models.mocap_solver import TS_AE, Motion_AE
 from models.mocap_solver.utils import Motion_loss, FK
 from models.mocap_solver.skeleton import get_topology, build_edge_topology
 from datasets.mocap_encoder import Motion_Dataset
-from tools.transform import quaternion_to_matrix, matrix_to_axis_angle, matrix_to_quaternion
+from tools.transform import quaternion_to_matrix, matrix_to_axis_angle
 
 
 class Motion_Agent(BaseAgent):
@@ -46,15 +46,17 @@ class Motion_Agent(BaseAgent):
         self.val_steps = len(self.val_dataset) // self.batch_size
 
         self.train_data_loader = DataLoader(self.train_dataset, batch_size=self.batch_size,\
-                                            shuffle=True, num_workers=8, pin_memory=True)
+                                            shuffle=True, num_workers=8, pin_memory=True, drop_last=True)
         self.val_data_loader = DataLoader(self.val_dataset, batch_size=self.batch_size,\
-                                            shuffle=False, num_workers=8, pin_memory=True)
+                                            shuffle=False, num_workers=8, pin_memory=True, drop_last=True)
 
     def run_batch(self, X_t, X_m):
         bs = X_t.shape[0]
         offsets = self.ts_model(X_t.view(bs, -1))
         Y_t = offsets[-1]
-        _, Y_m = self.model(X_m.transpose(-1, -2), offsets)
+        _, Y_m = self.model(X_m[:, :, 4:].transpose(-1, -2), [None]*3)
+
+        Y_m = Y_m.transpose(-1, -2)
         Y_t = Y_t.view(bs, self.num_joints, 3)
         return Y_t, Y_m
 
@@ -62,6 +64,7 @@ class Motion_Agent(BaseAgent):
         tqdm_batch = tqdm(total=self.train_steps, dynamic_ncols=True)
         total_loss = 0
         total_angle_err = 0
+        total_jpe = 0
         n = 0
 
         self.model.train()
@@ -69,7 +72,10 @@ class Motion_Agent(BaseAgent):
             bs = X_t.shape[0]
             n += bs
             X_t, X_m = X_t.to(torch.float32).to(self.device), X_m.to(torch.float32).to(self.device)
+
+            first_rot = X_m[:, :, :4].detach().clone()
             Y_t, Y_m = self.run_batch(X_t, X_m)
+            Y_m = torch.cat([first_rot, Y_m], -1)
 
             loss = self.criterion(Y_m, X_m, Y_t, X_t)
             total_loss += (loss.item() * bs)
@@ -78,10 +84,16 @@ class Motion_Agent(BaseAgent):
             loss.backward()
             self.optimizer.step()
 
-            quat_X = X_m[...,:-3].detach().clone().view(bs, self.window_size, self.num_joints, 4)
-            quat_Y = Y_m[...,:-3].detach().clone().view(bs, self.window_size, self.num_joints, 4)
-            R_x = quaternion_to_matrix(quat_X)
-            R_y = quaternion_to_matrix(quat_Y)
+            R_y, global_tr_y = FK(self.joint_topology, Y_m.detach().clone(), Y_t.detach().clone())
+            R_x, global_tr_x = FK(self.joint_topology, X_m.detach().clone(), X_t.detach().clone())
+            
+            jpe = torch.sqrt(torch.sum(torch.pow(global_tr_y - global_tr_x, 2), dim=-1))
+            total_jpe += (torch.sum(jpe)   / (self.window_size * self.num_joints))
+
+            # quat_X = X_m[...,:-3].detach().clone().view(bs, self.window_size, self.num_joints, 4)
+            # quat_Y = Y_m[...,:-3].detach().clone().view(bs, self.window_size, self.num_joints, 4)
+            # R_x = quaternion_to_matrix(quat_X)
+            # R_y = quaternion_to_matrix(quat_Y)
             R = R_y.transpose(-2, -1) @ R_x
             axis_angle = matrix_to_axis_angle(R)
             angle_diff = torch.norm(axis_angle, p=2, dim=-1)
@@ -89,18 +101,19 @@ class Motion_Agent(BaseAgent):
             angle_diff = torch.abs(angle_diff) / np.pi * 180
             total_angle_err += torch.sum(angle_diff) / (self.window_size * self.num_joints)
 
-            tqdm_update = "Epoch={0:04d}, loss={1:.4f}, joe={2:.4f}".format(epoch, loss.item(), angle_diff.mean())
+            tqdm_update = "Epoch={0:04d}, loss={1:.4f}, joe={2:.4f}, jpe={3:.4f}".format(epoch, loss.item(), angle_diff.mean(), jpe.mean())
             tqdm_batch.set_postfix_str(tqdm_update)
             tqdm_batch.update()
 
         total_loss /= n
         total_angle_err /= n
+        total_jpe /= n
         # self.write_summary(self.train_writer, total_loss, epoch)
-        self.wandb_summary(True, total_loss, total_angle_err)
+        self.wandb_summary(True, total_loss, total_angle_err, total_jpe)
 
         # tqdm_update = "Train: Epoch={0:04d},loss={1:.4f}".format(epoch, total_loss)
         # tqdm_update = "Train: Epoch={0:04d}, loss={1:.4f}, loss_c={2:.4f}, loss_t={3:.4f}, loss_m={4:4f}".format(epoch, total_loss, total_loss_c, total_loss_t, total_loss_m)
-        tqdm_update = "Train: Epoch={0:04d}, loss={1:.4f}, angle_err={2:4f}".format(epoch, total_loss, total_angle_err)
+        tqdm_update = "Train: Epoch={0:04d}, loss={1:.4f}, angle_err={2:.4f}, jpe={3:.4f}".format(epoch, total_loss, total_angle_err, total_jpe)
         tqdm_batch.set_postfix_str(tqdm_update)
         tqdm_batch.update()
         tqdm_batch.close()
@@ -112,6 +125,7 @@ class Motion_Agent(BaseAgent):
         tqdm_batch = tqdm(total=self.val_steps, dynamic_ncols=True) 
         total_loss = 0
         total_angle_err = 0
+        total_jpe = 0
         n = 0
 
         self.model.eval()
@@ -120,15 +134,23 @@ class Motion_Agent(BaseAgent):
                 bs = X_t.shape[0]
                 n += bs
                 X_t, X_m = X_t.to(torch.float32).to(self.device), X_m.to(torch.float32).to(self.device)
+                first_rot = X_m[:, :, :4].detach().clone()
                 Y_t, Y_m = self.run_batch(X_t, X_m)
+                Y_m = torch.cat([first_rot, Y_m], -1)
 
                 loss = self.criterion(Y_m, X_m, Y_t, X_t)
                 total_loss += (loss.item() * bs)
 
-                quat_X = X_m[...,:-3].detach().clone().view(bs, self.window_size, self.num_joints, 4)
-                quat_Y = Y_m[...,:-3].detach().clone().view(bs, self.window_size, self.num_joints, 4)
-                R_x = quaternion_to_matrix(quat_X)
-                R_y = quaternion_to_matrix(quat_Y)
+                R_y, global_tr_y = FK(self.joint_topology, Y_m.detach().clone(), Y_t.detach().clone())
+                R_x, global_tr_x = FK(self.joint_topology, X_m.detach().clone(), X_t.detach().clone())
+                
+                jpe = torch.sqrt(torch.sum(torch.pow(global_tr_y - global_tr_x, 2), dim=-1))
+                total_jpe += (torch.sum(jpe)  / (self.window_size * self.num_joints))
+
+                # quat_X = X_m[...,:-3].detach().clone().view(bs, self.window_size, self.num_joints, 4)
+                # quat_Y = Y_m[...,:-3].detach().clone().view(bs, self.window_size, self.num_joints, 4)
+                # R_x = quaternion_to_matrix(quat_X)
+                # R_y = quaternion_to_matrix(quat_Y)
                 R = R_y.transpose(-2, -1) @ R_x
                 axis_angle = matrix_to_axis_angle(R)
                 angle_diff = torch.norm(axis_angle, p=2, dim=-1)
@@ -136,18 +158,19 @@ class Motion_Agent(BaseAgent):
                 angle_diff = torch.abs(angle_diff) / np.pi * 180
                 total_angle_err += torch.sum(angle_diff) / (self.window_size * self.num_joints)
 
-                tqdm_update = "Epoch={0:04d}, loss={1:.4f}, joe={2:.4f}".format(epoch, loss.item(), angle_diff.mean())
+                tqdm_update = "Epoch={0:04d}, loss={1:.4f}, joe={2:.4f}, jpe={3:.4f}".format(epoch, loss.item(), angle_diff.mean(), jpe.mean())
                 tqdm_batch.set_postfix_str(tqdm_update)
                 tqdm_batch.update()
 
         total_loss /= n
         total_angle_err /= n
+        total_jpe /= n
         # self.write_summary(self.val_writer, total_loss, epoch)
-        self.wandb_summary(False, total_loss, total_angle_err)
+        self.wandb_summary(False, total_loss, total_angle_err, total_jpe)
 
         # tqdm_update = "Val  : Epoch={0:04d},loss={1:.4f}".format(epoch, total_loss)
         # tqdm_update = "Val:   Epoch={0:04d}, loss={1:.4f}, loss_c={2:.4f}, loss_t={3:.4f}, loss_m={4:4f}".format(epoch, total_loss, total_loss_c, total_loss_t, total_loss_m)
-        tqdm_update = "Val: Epoch={0:04d}, loss={1:.4f}, angle_err={2:4f}".format(epoch, total_loss, total_angle_err)
+        tqdm_update = "Val: Epoch={0:04d}, loss={1:.4f}, angle_err={2:4f}, jpe={3:.4f}".format(epoch, total_loss, total_angle_err, total_jpe)
         tqdm_batch.set_postfix_str(tqdm_update)
         tqdm_batch.update()
         tqdm_batch.close()
@@ -185,10 +208,12 @@ class Motion_Agent(BaseAgent):
         print(f"Loading TS Model: Epoch #{ckpt['epoch']}")
         return
 
-    def wandb_summary(self, training, total_loss, total_angle_err):
+    def wandb_summary(self, training, total_loss, total_angle_err, total_jpe):
         if not training:
             wandb.log({'Validation Loss': total_loss})
             wandb.log({'Validation Angle Error (deg)': total_angle_err})
+            wandb.log({'Validation Joint Position Error (mm)': 1000*total_jpe})
         else:
             wandb.log({'Training Loss': total_loss})
             wandb.log({'Training Angle Error (deg)': total_angle_err})
+            wandb.log({'Training Joint Position Error (mm)': 1000*total_jpe})

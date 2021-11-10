@@ -22,7 +22,7 @@ class weighted_L1_loss(nn.Module):
         super(weighted_L1_loss, self).__init__()
         self.weights = weights
         if loss_fn == "Huber":
-            self.crit = HuberLoss()
+            self.crit = HuberLoss(100)
         elif loss_fn == "SmoothL1":
             self.crit = nn.SmoothL1Loss(reduction=mode)
         elif loss_fn == "MSE":

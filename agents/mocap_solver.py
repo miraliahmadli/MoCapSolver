@@ -11,7 +11,7 @@ from models import AE, MocapSolver, MS_loss
 from models.mocap_solver import Decoder, MocapSolver, FK, LBS_motion
 from models.mocap_solver.skeleton import get_topology, build_edge_topology
 from datasets.mocap_solver import MS_Dataset
-from tools.transform import quaternion_to_matrix, matrix_to_axis_angle, matrix_to_quaternion, transformation_diff
+from tools.transform import quaternion_to_matrix, matrix_to_quaternion, transformation_diff
 from tools.utils import xform_to_mat44
 
 
@@ -83,28 +83,33 @@ class MS_Agent(BaseAgent):
         return X_res
 
     def run_batch(self, X, X_c, X_t, X_m, F, test=False):
-        l_c, l_t, l_m, Y_c, Y_t, Y_m = self.model(X)
+        xm_root_quat = X_m[..., :4] # ... x T x 4
+        xm_root_quat = nn.functional.normalize(xm_root_quat, dim=-1)
+        l_c, l_t, l_m, Y_c, Y_t, Y_m, ym_root_quat = self.model(X)
 
         bs = X.shape[0]
         lat_t = self.model.static_encoder(X_t.view(bs, -1))
         offset = [X_t, lat_t]
-        lat_c = self.model.mc_encoder(X_c.view(bs, -1), offset)
-        lat_m = self.model.dynamic_encoder(X_m.transpose(-1, -2), offset)
-        crit = nn.SmoothL1Loss()
+        crit_lat = nn.SmoothL1Loss()
         latent_loss = 0
         if not self.train_ts_decoder:
-            latent_loss += crit(l_t, lat_t)
+            latent_loss += 2*crit_lat(l_t, lat_t)
         if not self.train_mc_decoder:
-            latent_loss += crit(l_c, lat_c)
+            lat_c = self.model.mc_encoder(X_c.view(bs, -1), offset)
+            latent_loss += crit_lat(l_c, lat_c)
         if not self.train_motion_decoder:
-            latent_loss += crit(l_m, lat_m)
+            lat_m = self.model.dynamic_encoder(X_m[:, :, 4:].transpose(-1, -2), offset)
+            latent_loss += crit_lat(l_m, lat_m)
+        
+        crit_rot = nn.MSELoss()
+        first_rot_loss = 100*crit_rot(ym_root_quat, xm_root_quat)
 
         # skinning
         j_rot, j_tr = FK(self.joint_topology, Y_m, Y_t)
         j_xform = torch.cat([j_rot, j_tr.unsqueeze(-1)], dim=-1)
         Y = LBS_motion(self.skinning_w, Y_c, j_xform)
 
-        return Y_c, Y_t, Y_m, Y, latent_loss
+        return Y_c, Y_t, Y_m, Y, latent_loss, first_rot_loss
 
     def train_per_epoch(self, epoch):
         tqdm_batch = tqdm(total=self.train_steps, dynamic_ncols=True) 
@@ -127,11 +132,11 @@ class MS_Agent(BaseAgent):
             X, F, X_clean = X.to(torch.float32).to(self.device), F.to(torch.float32).to(self.device), X_clean.to(torch.float32).to(self.device)
             X_c, X_t, X_m = X_c.to(torch.float32).to(self.device), X_t.to(torch.float32).to(self.device),  X_m.to(torch.float32).to(self.device)
 
-            Y_c, Y_t, Y_m, Y, latent_loss = self.run_batch(X, X_c, X_t, X_m, F)
+            Y_c, Y_t, Y_m, Y, latent_loss, first_rot_loss = self.run_batch(X, X_c, X_t, X_m, F)
 
             losses = self.criterion((Y_c, Y_t, Y_m, Y), (X_c, X_t, X_m, X_clean))
             loss, loss_c, loss_t, loss_m, loss_marker = losses
-            loss += latent_loss
+            loss += latent_loss + first_rot_loss
             total_loss += loss.item() * bs
 
             self.optimizer.zero_grad()
@@ -143,8 +148,9 @@ class MS_Agent(BaseAgent):
             xform_x = torch.cat([glob_r_x, glob_t_x[..., None]], dim=-1)
             xform_y = torch.cat([glob_r_y, glob_t_y[..., None]], dim=-1)
             angle_diff, translation_diff = transformation_diff(xform_x, xform_y)
+            angle_diff = angle_diff / np.pi * 180
 
-            total_angle_err += torch.sum(angle_diff / np.pi * 180) / (self.window_size * self.num_joints)
+            total_angle_err += torch.sum(angle_diff) / (self.window_size * self.num_joints)
 
             # jp_err = torch.norm(X_t.detach().clone() - Y_t.detach().clone(), 2, dim=-1) # n x j
             # total_jp_err += jp_err.sum() / self.num_joints
@@ -153,8 +159,8 @@ class MS_Agent(BaseAgent):
             mp_err = torch.norm(X_clean.detach().clone().view(-1, self.num_markers, 3) - Y.detach().clone().view(-1, self.num_markers, 3), 2, dim=-1) # (n x t) x m
             total_mp_err += mp_err.sum() / (self.num_markers * self.window_size)
 
-            # tqdm_update = "Epoch={0:04d}, loss={1:.4f}, angle_diff={2:.4f}, jpe={3:.4f}, mpe={4:4f}".format(epoch, 1000*loss.item() / bs, torch.abs(angle_diff).mean(), jp_err.mean(), mp_err.mean())
-            tqdm_update = "Epoch={0:04d}, loss={1:.4f}, loss_c={2:.4f}, loss_t={3:.4f}, loss_m={4:4f}, loss_marker={5:4f}".format(epoch, loss.item(), loss_c.item(), loss_t.item(), loss_m.item(), loss_marker.item())
+            tqdm_update = "Epoch={0:04d}, loss={1:.4f}, angle_diff={2:.4f}, jpe={3:.4f}, mpe={4:4f}".format(epoch, 1000*loss.item() / bs, torch.abs(angle_diff).mean(), translation_diff.mean(), mp_err.mean())
+            # tqdm_update = "Epoch={0:04d}, loss={1:.4f}, loss_c={2:.4f}, loss_t={3:.4f}, loss_m={4:4f}, loss_marker={5:4f}".format(epoch, loss.item(), loss_c.item(), loss_t.item(), loss_m.item(), loss_marker.item())
             tqdm_batch.set_postfix_str(tqdm_update)
             tqdm_batch.update()
 
@@ -189,10 +195,10 @@ class MS_Agent(BaseAgent):
                 X, F, X_clean = X.to(torch.float32).to(self.device), F.to(torch.float32).to(self.device), X_clean.to(torch.float32).to(self.device)
                 X_c, X_t, X_m = X_c.to(torch.float32).to(self.device), X_t.to(torch.float32).to(self.device),  X_m.to(torch.float32).to(self.device)
 
-                Y_c, Y_t, Y_m, Y, latent_loss = self.run_batch(X, X_c, X_t, X_m, F)
+                Y_c, Y_t, Y_m, Y, latent_loss, first_rot_loss = self.run_batch(X, X_c, X_t, X_m, F)
                 losses = self.criterion((Y_c, Y_t, Y_m, Y), (X_c, X_t, X_m, X_clean))
                 loss, loss_c, loss_t, loss_m, loss_marker = losses
-                loss += latent_loss
+                loss += latent_loss + first_rot_loss
                 total_loss += loss.item() * bs
 
                 glob_r_x, glob_t_x = FK(self.joint_topology, X_m.detach().clone(), X_t.detach().clone())
@@ -200,8 +206,9 @@ class MS_Agent(BaseAgent):
                 xform_x = torch.cat([glob_r_x, glob_t_x[..., None]], dim=-1)
                 xform_y = torch.cat([glob_r_y, glob_t_y[..., None]], dim=-1)
                 angle_diff, translation_diff = transformation_diff(xform_x, xform_y)
+                angle_diff = angle_diff / np.pi * 180
 
-                total_angle_err += torch.sum(angle_diff / np.pi * 180) / (self.window_size * self.num_joints)
+                total_angle_err += torch.sum(angle_diff) / (self.window_size * self.num_joints)
 
                 # jp_err = torch.norm(X_t.detach().clone() - Y_t.detach().clone(), 2, dim=-1) # n x j
                 # total_jp_err += jp_err.sum() / self.num_joints
@@ -210,8 +217,8 @@ class MS_Agent(BaseAgent):
                 mp_err = torch.norm(X_clean.detach().clone().view(-1, self.num_markers, 3) - Y.detach().clone().view(-1, self.num_markers, 3), 2, dim=-1) # (n x t) x m
                 total_mp_err += mp_err.sum() / (self.num_markers * self.window_size)
 
-                # tqdm_update = "Epoch={0:04d}, loss={1:.4f}, angle_diff={2:.4f}, mpe={4:4f}".format(epoch, loss.item(), torch.abs(angle_diff).mean(), jp_err.mean(), mp_err.mean())
-                tqdm_update = "Epoch={0:04d}, loss={1:.4f}, loss_c={2:.4f}, loss_t={3:.4f}, loss_m={4:4f}, loss_marker={5:4f}".format(epoch, loss.item(), loss_c.item(), loss_t.item(), loss_m.item(), loss_marker.item())
+                tqdm_update = "Epoch={0:04d}, loss={1:.4f}, angle_diff={2:.4f}, mpe={4:4f}".format(epoch, loss.item(), torch.abs(angle_diff).mean(), translation_diff.mean(), mp_err.mean())
+                # tqdm_update = "Epoch={0:04d}, loss={1:.4f}, loss_c={2:.4f}, loss_t={3:.4f}, loss_m={4:4f}, loss_marker={5:4f}".format(epoch, loss.item(), loss_c.item(), loss_t.item(), loss_m.item(), loss_marker.item())
                 tqdm_batch.set_postfix_str(tqdm_update)
                 tqdm_batch.update()
 

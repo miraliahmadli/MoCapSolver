@@ -1,7 +1,9 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from models.mocap_solver.enc_and_dec import *
+from models.mocap_solver.enc_and_dec_2 import MotionEncoder, MotionDecoder
 from models.mocap_solver.utils import ResidualBlock, MSBlock
 
 
@@ -38,13 +40,16 @@ class MC_AE(nn.Module):
 
 
 class Motion_AE(nn.Module):
-    def __init__(self, edges, skeleton_info="concat",
+    def __init__(self, edges, skeleton_info="",
                 offset_channels=[], offset_joint_num=[]):
         super(Motion_AE, self).__init__()
-        self.encoder = DynamicEncoder(edges, skeleton_info=skeleton_info, 
-                                    offset_channels=offset_channels, 
-                                    offset_joint_num=offset_joint_num)
-        self.decoder = DynamicDecoder(self.encoder)
+        # self.encoder = DynamicEncoder(edges, skeleton_info=skeleton_info, 
+        #                             offset_channels=offset_channels, 
+        #                             offset_joint_num=offset_joint_num)
+        # self.decoder = DynamicDecoder(self.encoder)
+
+        self.encoder = MotionEncoder(edges, skeleton_info=skeleton_info)
+        self.decoder = MotionDecoder(self.encoder, skeleton_info=skeleton_info)
 
     def forward(self, X_m, offsets):
         l_m = self.encoder(X_m, offsets[:2])
@@ -76,7 +81,7 @@ class MocapEncoder(nn.Module):
     def __init__(self, num_markers, window_size, hidden_size, num_res_layers=3,
                 use_marker_conf=False, marker_out_size:int=1024, 
                 use_skeleton=False, skeleton_out_size:int=168, 
-                use_motion=False, motion_out_size:int=1792):
+                use_motion=False, motion_out_size:int=2048):
         super(MocapEncoder, self).__init__()
         self.use_marker_conf = use_marker_conf
         self.use_skeleton = use_skeleton
@@ -136,17 +141,27 @@ class MocapSolver(nn.Module):
         self.num_markers = num_markers
 
     def forward(self, X):
-        l_c, l_t, l_m = self.mocap_solver(X)
-        l_m = l_m.view(l_m.shape[0], 16, -1)
+        l_c, l_t, l_mot = self.mocap_solver(X)
+        bs = l_mot.shape[0]
+        root_quat = l_mot[..., :256]
+        l_m = l_mot[..., 256:]
+
+        root_quat = root_quat.view(bs, 64, 4)
+        root_quat = F.normalize(root_quat, dim=-1)
+        l_m = l_m.view(bs, -1, 16)
         
         Y_t = self.static_decoder(l_t.T)
         offsets = [l_t, Y_t]
-        Y_m = self.dynamic_decoder(l_m, offsets)
-        Y_c = self.mc_decoder(l_c, offsets)        
+        Y_m = self.dynamic_decoder(l_m, offsets).transpose(-1, -2)
+        Y_c = self.mc_decoder(l_c, offsets)    
 
+        Y_m = torch.cat((root_quat, Y_m), -1)
         Y_c = Y_c.view(Y_c.shape[0], self.num_markers, self.num_joints, 3)
         Y_t = Y_t.view(Y_t.shape[0], self.num_joints, 3)
-        return l_c, l_t, l_m, Y_c, Y_t, Y_m
+        return l_c, l_t, l_m, Y_c, Y_t, Y_m, root_quat
+
+    def parameters(self):
+        return list(self.mocap_solver.parameters())
 
 
 def test_models():
@@ -167,19 +182,24 @@ def test_models():
     edges = build_edge_topology(joint_topology, torch.zeros((len(joint_topology), 3)))
     print("-------------")
 
-    print("AutoEncoder")
-    x_c = torch.rand(5, 56 * 24 * 3)
-    x_m = torch.rand(5, len(joint_topology)*4 + 3, 64)
-    x_t = torch.rand(5, len(joint_topology) * 3)
-    print(x_c.shape, x_t.shape, x_m.shape)
-    auto_encoder = AE(edges, 56, 24, 1024, offset_dims=[24*3, 168],
-                    offset_channels=[1, 8], offset_joint_num=[len(joint_topology), 7])
-    lat_c, lat_t, lat_m = auto_encoder.encoder(x_c, x_t, x_m)
-    print(lat_c.shape, lat_t.shape, lat_m.shape)
-    outs = auto_encoder.decoder(lat_c, lat_t, lat_m)
-    for out in outs:
-        print("\t", out.shape)
-    print("\n----------------------------\n")
+    model = Motion_AE(edges)
+    x_m = torch.rand(5, len(edges)*4 + 3, 64)
+    l_m, y_m = model(x_m, [None]*2)
+    print(x_m.shape, y_m.shape, l_m.shape)
+
+    # print("AutoEncoder")
+    # x_c = torch.rand(5, 56 * 24 * 3)
+    # x_m = torch.rand(5, len(joint_topology)*4 + 3, 64)
+    # x_t = torch.rand(5, len(joint_topology) * 3)
+    # print(x_c.shape, x_t.shape, x_m.shape)
+    # auto_encoder = AE(edges, 56, 24, 1024, offset_dims=[24*3, 168],
+    #                 offset_channels=[1, 8], offset_joint_num=[len(joint_topology), 7])
+    # lat_c, lat_t, lat_m = auto_encoder.encoder(x_c, x_t, x_m)
+    # print(lat_c.shape, lat_t.shape, lat_m.shape)
+    # outs = auto_encoder.decoder(lat_c, lat_t, lat_m)
+    # for out in outs:
+    #     print("\t", out.shape)
+    # print("\n----------------------------\n")
 
     # print("Mocap Solver")
     # num_markers = 56
