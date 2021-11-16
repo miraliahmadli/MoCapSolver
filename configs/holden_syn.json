@@ -7,14 +7,14 @@
     "csv_file": "",
     "lrf_mean_markers": "dataset/LRF_mean_offsets_synthetic_2.npy",
 
-    "train_filenames": "data/synthetic_train_all.txt",
-    "val_filenames": "data/synthetic_val_all.txt",
-    "test_filenames": "data/synthetic_test.txt",
+    "train_filenames": "data/ms_train.txt",
+    "val_filenames": "data/ms_val.txt",
+    "test_filenames": "data/test.txt",
 
-    "logs_dir": "logs/syn_sc/",
-    "model_dir": "logs/syn_sc/model.pth",
-    "train_sum": "logs/syn_sc/tensorboard/train",
-    "val_sum": "logs/syn_sc/tensorboard/val",
+    "logs_dir": "logs/vn_holden/",
+    "model_dir": "logs/vn_holden/model.pth",
+    "train_sum": "logs/vn_holden/tensorboard/train",
+    "val_sum": "logs/vn_holden/tensorboard/val",
 
     "use_gpu": true,
     "gpu_idx": 1,
@@ -30,23 +30,21 @@
     "hierarchy": "dataset/hierarchy_synthetic_bfs.txt",
 
     "sampler":{
-        "mean_fname": "dataset/z_stats/mu_synthetic_2.npy",
-        "cholesky_fname": "dataset/z_stats/cholesky_synthetic_2.npy"
+        "mean_fname": "dataset/z_stats/mu_new_syn.npy",
+        "cholesky_fname": "dataset/z_stats/cholesky_new_syn.npy"
     },
 
     "model":{
-        "available": ["baseline", "least_square", "modified_baseline", "gnn"],
-        "used": "baseline",
-        "baseline": {
-            "hidden_size":2048,
-            "num_layers": 5,
-            "use_svd": false
-        }
+        "available": ["baseline", "least_square", "VN", "gnn"],
+        "used": "VN",
+        "hidden_size":2048,
+        "num_layers": 5,
+        "use_svd": false
     },
 
     "training_settings":{
         "train_set": {
-            "sample": true,
+            "sample": false,
             "corrupt": true
         },
         "val_set": {
@@ -62,7 +60,8 @@
             "lr": 0.001
         },
         "Adam": {
-            "lr": 0.001
+            "lr": 0.001,
+            "weight_decay": 0
         },
         "AmsGrad": {
             "lr": 1e-4,

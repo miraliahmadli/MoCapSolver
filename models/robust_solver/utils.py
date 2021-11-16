@@ -2,6 +2,23 @@ import torch
 import torch.nn as nn
 from models.loss import weighted_L1_loss
 
+from models.vn_layers import *
+
+
+class VNResidualBlock(nn.Module):
+    def __init__(self, hidden_size: int):
+        super(VNResidualBlock, self).__init__()
+        self.bn = VNBatchNorm(hidden_size, 3)
+        self.linear = VNLinear(hidden_size, hidden_size)
+        self.lerelu = VNLeakyReLU(hidden_size)
+
+    def forward(self, x):
+        out = self.bn(x)
+        out = self.lerelu(out)
+        x0 = self.linear(out)
+        out = out + x0
+        return out
+
 
 class ResidualBlock(nn.Module):
     def __init__(self, hidden_size: int):

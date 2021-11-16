@@ -8,7 +8,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 
 from agents.base_agent import BaseAgent
-from models import Baseline, LS_solver, RS_loss
+from models import Baseline, LS_solver, RS_loss, VNHoldenModel
 from datasets.robust_solver import RS_Dataset, RS_Test_Dataset, RS_Synthetic, RS_Synthetic_Test
 
 from tools.utils import LBS, corrupt, preweighted_Z, xform_to_mat44, symmetric_orthogonalization
@@ -22,6 +22,7 @@ class RS_Agent(BaseAgent):
     def __init__(self, cfg, test=False, sweep=False):
         super(RS_Agent, self).__init__(cfg, test, sweep)
         # torch.autograd.set_detect_anomaly(True)
+        self.use_vn = self.cfg.model.used.lower()
         self.conv_to_m = cfg.scale_factor #0.57803
 
         self.user_weights_rot = cfg.user_weights_rotation
@@ -43,12 +44,13 @@ class RS_Agent(BaseAgent):
 
     def build_model(self):
         used = self.cfg.model.used.lower()
+        hidden_size = self.cfg.model.hidden_size
+        use_svd = self.cfg.model.use_svd
+        num_layers = self.cfg.model.num_layers
         if used == "baseline":
-            hidden_size = self.cfg.model.baseline.hidden_size
-            use_svd = self.cfg.model.baseline.use_svd
-            num_layers = self.cfg.model.baseline.num_layers
-            
             self.model = Baseline(self.num_markers, self.num_joints, hidden_size, num_layers, use_svd)
+        elif used == "vn":
+            self.model = VNHoldenModel(self.num_markers, self.num_joints, hidden_size, num_layers, use_svd)
         elif used == "least_square":
             w = weight_assign('dataset/joint_to_marker_three2one.txt').to(self.device)
             self.model = LS_solver(self.num_joints, w)
@@ -102,6 +104,24 @@ class RS_Agent(BaseAgent):
         if self.cfg.model.used.lower() != "least_square":
             Y_hat = denormalize_Y(Y_hat, Y)
         return Y_hat
+    
+    def run_batch_vn(self, Y, Z, avg_bone, bs, sample_markers, corrupt_markers):
+        if sample_markers:
+            Z = self.sampler.sample((bs, )).view(-1, self.num_markers, self.num_joints, 3)
+
+        X = LBS(self.w, Y, Z)
+        if corrupt_markers:
+            beta = 3 / (self.conv_to_m * avg_bone)
+            X_hat = corrupt(X, beta=beta.view(-1))
+        else:
+            X_hat = X
+
+        root_tr = Y[:, 0:1, :, -1]
+        X_hat -= root_tr
+        Y_hat = self.model(X_hat)
+        Y_hat += root_tr[..., None]
+
+        return Y_hat
 
     def train_per_epoch(self, epoch):
         tqdm_batch = tqdm(total=self.train_steps, dynamic_ncols=True) 
@@ -119,9 +139,13 @@ class RS_Agent(BaseAgent):
             Y, Z, avg_bone = Y.to(torch.float32), Z.to(torch.float32), avg_bone.to(torch.float32)
             Y, Z, avg_bone = Y.to(self.device), Z.to(self.device), avg_bone.to(self.device).squeeze(-1)
 
-            Y_hat = self.run_batch(Y, Z, avg_bone, bs,\
-                                    sample_markers=self.cfg.training_settings.train_set.sample,\
-                                    corrupt_markers=self.cfg.training_settings.train_set.corrupt)
+            if self.cfg.model.used.lower() == "vn":
+                Y_hat = self.run_batch_vn(Y, Z, avg_bone, bs, sample_markers=False, 
+                                            corrupt_markers=self.cfg.training_settings.train_set.corrupt)
+            else:
+                Y_hat = self.run_batch(Y, Z, avg_bone, bs,\
+                                        sample_markers=self.cfg.training_settings.train_set.sample,
+                                        corrupt_markers=self.cfg.training_settings.train_set.corrupt)
 
             loss_rot, loss_tr = self.criterion(Y, Y_hat)
             loss = loss_tr + loss_rot
@@ -140,7 +164,7 @@ class RS_Agent(BaseAgent):
             Y_h[..., 3] *= (self.conv_to_m * avg_bone * 100)
             Y_[..., 3] *= (self.conv_to_m * avg_bone * 100)
             
-            Y_h_orth = Y_h.clone().view(-1, 3, 4)
+            Y_h_orth = Y_h.reshape(-1, 3, 4)
             Y_h_orth[..., :3] = symmetric_orthogonalization(Y_h_orth[..., :3].clone()).clone()
             Y_h_orth = Y_h_orth.view(-1, self.num_joints, 3, 4)
 
@@ -185,9 +209,13 @@ class RS_Agent(BaseAgent):
                 n += bs
                 Y, Z, avg_bone = Y.to(torch.float32).to(self.device), Z.to(torch.float32).to(self.device), avg_bone.to(torch.float32).to(self.device).squeeze(-1)
 
-                Y_hat = self.run_batch(Y, Z, avg_bone, bs,\
-                                    sample_markers=self.cfg.training_settings.val_set.sample,\
-                                    corrupt_markers=self.cfg.training_settings.val_set.corrupt)
+                if self.cfg.model.used.lower() == "vn":
+                    Y_hat = self.run_batch_vn(Y, Z, avg_bone, bs, sample_markers=False, 
+                                                corrupt_markers=self.cfg.training_settings.train_set.corrupt)
+                else:
+                    Y_hat = self.run_batch(Y, Z, avg_bone, bs,\
+                                            sample_markers=self.cfg.training_settings.train_set.sample,\
+                                            corrupt_markers=self.cfg.training_settings.train_set.corrupt)
 
                 loss_rot, loss_tr = self.criterion(Y, Y_hat)
                 loss = loss_tr + loss_rot
@@ -202,7 +230,7 @@ class RS_Agent(BaseAgent):
                 Y_h[..., 3] *= (self.conv_to_m * avg_bone * 100)
                 Y_[..., 3] *= (self.conv_to_m * avg_bone * 100)
 
-                Y_h_orth = Y_h.clone().view(-1, 3, 4)
+                Y_h_orth = Y_h.reshape(-1, 3, 4)
                 Y_h_orth[..., :3] = symmetric_orthogonalization(Y_h_orth[..., :3].clone()).clone()
                 Y_h_orth = Y_h_orth.view(-1, self.num_joints, 3, 4)
 
@@ -295,7 +323,7 @@ class RS_Agent(BaseAgent):
 
     def default_cfg(self):
         return {
-            "use_svd": self.cfg.model.baseline.use_svd,
+            "use_svd": self.cfg.model.use_svd,
             "lr": self.cfg.optimizer.AmsGrad.lr,
             "decay": self.cfg.lr_scheduler.ExponentialLR.decay
         }
