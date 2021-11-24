@@ -15,7 +15,7 @@ def xform_to_mat44(X):
     shape = X.shape[: -2] + (1, 4)
     affine = torch.zeros(shape, device=X.device)
     affine[..., -1] = 1
-    X_44 = torch.cat((X, affine), axis = -2)
+    X_44 = torch.cat((X, affine), dim=-2)
 
     return X_44
 
@@ -35,7 +35,7 @@ def xform_inv(Y):
     T_inv = -T
 
     R_x_T = torch.matmul(R_inv, T_inv)
-    Y_inv = torch.cat((R_inv, R_x_T), axis = -1)
+    Y_inv = torch.cat((R_inv, R_x_T), dim=-1)
 
     return Y_inv
 
@@ -58,7 +58,7 @@ def LBS(w, Y, Z):
     w_ = w.permute(1, 0) # j x m
 
     z_padding = torch.ones((n, m, j, 1), device=Z.device)
-    Z_ = torch.cat((Z, z_padding), axis=3)
+    Z_ = torch.cat((Z, z_padding), dim=3)
     Z_ = Z_.permute(2, 0, 3, 1) # j x n x 4 x m
 
     Y_ = Y.permute(1, 0, 2, 3) # j x n x 3 x 4
@@ -67,7 +67,7 @@ def LBS(w, Y, Z):
 
     X = torch.sum(
             torch.mul(prod, w_.reshape((j, m, 1, 1))), 
-            axis=0).permute(1, 0, 2) # n x m x 3
+            dim=0).permute(1, 0, 2) # n x m x 3
 
     return X
 
@@ -90,8 +90,8 @@ def svd_rot(P, Q):
     d, n = P.shape[-2:]
 
     # X,Y are d x n
-    P_ = torch.sum(P, axis=-1) / n
-    Q_ = torch.sum(Q, axis=-1) / n
+    P_ = torch.sum(P, dim=-1) / n
+    Q_ = torch.sum(Q, dim=-1) / n
     X = P - P_[..., None]
     Y = Q - Q_[..., None]
     Yt = Y.permute(0, 2, 1)
@@ -184,7 +184,7 @@ def corrupt(X, sigma_occ=0.1, sigma_shift=0.1, beta=.5):
 def preweighted_Z(w, Z):
     Z_ = torch.sum(
             torch.mul(Z.permute(1, 2, 0, 3), w[..., None, None]), 
-            axis=1).permute(1, 0, 2) # n x m x 3
+            dim=1).permute(1, 0, 2) # n x m x 3
     return Z_
 
 
