@@ -35,7 +35,7 @@
     },
 
     "model":{
-        "available": ["baseline", "least_square", "VN", "gnn"],
+        "available": ["baseline", "VN"],
         "used": "VN",
         "hidden_size":2048,
         "num_layers": 5,

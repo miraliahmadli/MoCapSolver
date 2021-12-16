@@ -30,7 +30,7 @@
     },
 
     "model":{
-        "available": ["baseline", "least_square", "modified_baseline", "gnn"],
+        "available": ["baseline", "modified_baseline"],
         "used": "baseline",
         "baseline": {
             "hidden_size":2048,

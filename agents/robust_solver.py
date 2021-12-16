@@ -8,7 +8,7 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 
 from agents.base_agent import BaseAgent
-from models import Baseline, LS_solver, RS_loss, VNHoldenModel
+from models import Baseline, RS_loss, VNHoldenModel
 from datasets.robust_solver import RS_Dataset, RS_Test_Dataset, RS_Synthetic, RS_Synthetic_Test
 
 from tools.utils import LBS, corrupt, preweighted_Z, xform_to_mat44, symmetric_orthogonalization
@@ -51,9 +51,6 @@ class RS_Agent(BaseAgent):
             self.model = Baseline(self.num_markers, self.num_joints, hidden_size, num_layers, use_svd)
         elif used == "vn":
             self.model = VNHoldenModel(self.num_markers, self.num_joints, hidden_size, num_layers, use_svd)
-        elif used == "least_square":
-            w = weight_assign('dataset/joint_to_marker_three2one.txt').to(self.device)
-            self.model = LS_solver(self.num_joints, w)
         else:
             raise NotImplementedError
 
@@ -93,16 +90,12 @@ class RS_Agent(BaseAgent):
         else:
             X_hat = X
 
-        if self.cfg.model.used.lower() == "least_square":
-            X = X_hat
-        else:
-            X = normalize_X(X_hat, X)
-            Z_pw = preweighted_Z(self.w, Z)
-            Z = normalize_Z_pw(Z_pw)
+        X = normalize_X(X_hat, X)
+        Z_pw = preweighted_Z(self.w, Z)
+        Z = normalize_Z_pw(Z_pw)
 
         Y_hat = self.model(X, Z).view(bs, self.num_joints, 3, 4)
-        if self.cfg.model.used.lower() != "least_square":
-            Y_hat = denormalize_Y(Y_hat, Y)
+        Y_hat = denormalize_Y(Y_hat, Y)
         return Y_hat
     
     def run_batch_vn(self, Y, Z, avg_bone, bs, sample_markers, corrupt_markers):
@@ -278,12 +271,11 @@ class RS_Agent(BaseAgent):
         self.model.to(self.device)
         self.criterion = self.build_loss_function()
 
-        if self.cfg.model.used.lower() != "least_square":
-            if os.path.exists(self.checkpoint_dir):
-                self.load_model()
-            else:
-                print("There is no saved model")
-                exit()
+        if os.path.exists(self.checkpoint_dir):
+            self.load_model()
+        else:
+            print("There is no saved model")
+            exit()
 
         self.model.eval()
         with torch.no_grad():

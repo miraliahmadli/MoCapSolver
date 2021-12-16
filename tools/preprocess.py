@@ -71,14 +71,14 @@ def get_Z(X, Y):
 def clean_XY(X_read, Y_read, avg_bone_read, m_conv=0.56444, del_nans=False):#0.57803):
     '''
     Clean XYZ
-​
+
     Parameters:
         X_read: global marker positions read from the npy, dim: (4, m, n)
         Y_read: rotation + translation matrices read from the npy, dim: (n, j, 3, 4)
         avg_bone_read: avg bone length
         m_conv: conversion constant
         del_nans: delete frames with nans
-​
+
     Return:
         X: cleaned global marker positions, dim: (n, m, 3)
         Y: cleaned rotation + translation matrices, dim: (n, j, 3, 4)
