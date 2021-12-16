@@ -12,9 +12,9 @@ from datasets.mocap_encoder import TS_Dataset
 
 
 class TS_Agent(BaseAgent):
-    def __init__(self, cfg, test=False, sweep=False):
-        super(TS_Agent, self).__init__(cfg, test, sweep)
-        # torch.autograd.set_detect_anomaly(True)
+    def __init__(self, cfg, test=False):
+        super(TS_Agent, self).__init__(cfg, test)
+
         self.joint_weights = torch.tensor(cfg.joint_weights, dtype=torch.float32, device=self.device).view(-1, 1)
 
         self.joint_topology = get_topology(cfg.hierarchy, self.num_joints)

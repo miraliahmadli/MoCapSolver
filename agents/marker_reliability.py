@@ -10,8 +10,8 @@ from datasets.marker_reliability import MR_Dataset
 
 
 class MR_Agent(BaseAgent):
-    def __init__(self, cfg, test=False, sweep=False):
-        super(MR_Agent, self).__init__(cfg, False, False)
+    def __init__(self, cfg, test=False):
+        super(MR_Agent, self).__init__(cfg, False)
 
     def build_model(self):
         self.model = MarkerReliability(self.num_markers, 8, hidden_size=self.cfg.model.hidden_size, 

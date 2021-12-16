@@ -13,9 +13,9 @@ from datasets.mocap_encoder import MC_Dataset
 
 
 class MC_Agent(BaseAgent):
-    def __init__(self, cfg, test=False, sweep=False):
-        super(MC_Agent, self).__init__(cfg, test, sweep)
-        # torch.autograd.set_detect_anomaly(True)
+    def __init__(self, cfg, test=False):
+        super(MC_Agent, self).__init__(cfg, test)
+
         self.ts_checkpoint_dir = cfg.ts_model
         self.marker_weights = torch.tensor(cfg.marker_weights, dtype=torch.float32, device=self.device).view(-1, 1)
         self.offset_weights = torch.tensor(np.load(cfg.offset_weights), dtype=torch.float32, device=self.device)

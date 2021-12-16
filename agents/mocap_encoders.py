@@ -12,9 +12,9 @@ from tools.transform import quaternion_to_matrix, matrix_to_axis_angle, matrix_t
 
 
 class EncoderAgent(BaseAgent):
-    def __init__(self, cfg, test=False, sweep=False):
-        super(EncoderAgent, self).__init__(cfg, test, sweep)
-        torch.autograd.set_detect_anomaly(True)
+    def __init__(self, cfg, test=False):
+        super(EncoderAgent, self).__init__(cfg, test)
+
         self.joint_weights = torch.tensor(cfg.joint_weights, dtype=torch.float32, device=self.device).view(-1, 1)
         self.marker_weights = torch.tensor(cfg.marker_weights, dtype=torch.float32, device=self.device).view(-1, 1)
         self.offset_weights = torch.tensor(np.load(cfg.offset_weights), dtype=torch.float32, device=self.device)

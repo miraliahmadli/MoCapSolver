@@ -15,10 +15,10 @@ from tools.transform import quaternion_to_matrix, matrix_to_axis_angle
 
 
 class Motion_Agent(BaseAgent):
-    def __init__(self, cfg, test=False, sweep=False):
-        super(Motion_Agent, self).__init__(cfg, test, sweep)
+    def __init__(self, cfg, test=False):
+        super(Motion_Agent, self).__init__(cfg, test)
         self.ts_checkpoint_dir = cfg.ts_model
-        # torch.autograd.set_detect_anomaly(True)
+
         self.joint_weights = torch.tensor(cfg.joint_weights, dtype=torch.float32, device=self.device).view(-1, 1)
         self.offset_weights = torch.tensor(np.load(cfg.offset_weights), dtype=torch.float32, device=self.device)
         self.offset_weights = self.offset_weights.view(*self.offset_weights.shape, 1)

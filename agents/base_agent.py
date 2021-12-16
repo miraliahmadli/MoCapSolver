@@ -9,10 +9,9 @@ from torch.optim.lr_scheduler import MultiStepLR, ExponentialLR
 
 
 class BaseAgent(ABC):
-    def __init__(self, cfg, test=False, sweep=False):
+    def __init__(self, cfg, test=False):
         self.cfg = cfg
         self.is_test = test
-        self.is_sweep = sweep
         self.checkpoint_dir = cfg.model_dir
 
         self.num_markers = cfg.num_markers
@@ -43,17 +42,6 @@ class BaseAgent(ABC):
         train_loss_f = []
 
         wandb.init(config=self.default_cfg(), project=self.cfg.project, entity=self.cfg.entity)
-        if self.is_sweep:
-            sweep_config = wandb.config
-            model_used = self.cfg.model.used.lower()
-            optimizer_used = self.cfg.optimizer.used.lower()
-            scheduler_used = self.cfg.lr_scheduler.used
-            if model_used == "baseline":
-                self.cfg.model.baseline.use_svd = sweep_config.use_svd
-            if optimizer_used == "amsgrad":
-                self.cfg.optimizer.AmsGrad.lr = sweep_config.lr
-            if scheduler_used == "ExponentialLR":
-                self.cfg.lr_scheduler.ExponentialLR.decay = sweep_config.decay
 
         self.build_model()
         self.criterion = self.build_loss_function()

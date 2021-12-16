@@ -19,9 +19,9 @@ from tools.transform import transformation_diff
 
 
 class RS_Agent(BaseAgent):
-    def __init__(self, cfg, test=False, sweep=False):
-        super(RS_Agent, self).__init__(cfg, test, sweep)
-        # torch.autograd.set_detect_anomaly(True)
+    def __init__(self, cfg, test=False):
+        super(RS_Agent, self).__init__(cfg, test)
+
         self.use_vn = self.cfg.model.used.lower()
         self.conv_to_m = cfg.scale_factor #0.57803
 
