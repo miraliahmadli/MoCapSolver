@@ -141,14 +141,14 @@ class RS_Agent(BaseAgent):
 
             if self.cfg.model.used.lower() == "vn":
                 Y_hat = self.run_batch_vn(Y, Z, avg_bone, bs, sample_markers=False, 
-                                            corrupt_markers=self.cfg.training_settings.train_set.corrupt)
+                                            corrupt_markers=False)#self.cfg.training_settings.train_set.corrupt)
             else:
                 Y_hat = self.run_batch(Y, Z, avg_bone, bs,\
                                         sample_markers=self.cfg.training_settings.train_set.sample,
                                         corrupt_markers=self.cfg.training_settings.train_set.corrupt)
 
             loss_rot, loss_tr = self.criterion(Y, Y_hat)
-            loss = loss_tr + loss_rot
+            loss = 20*loss_tr + 100*loss_rot
 
             self.optimizer.zero_grad()
             loss.backward()
@@ -165,14 +165,16 @@ class RS_Agent(BaseAgent):
             Y_[..., 3] *= (self.conv_to_m * avg_bone * 100)
             
             Y_h_orth = Y_h.reshape(-1, 3, 4)
-            Y_h_orth[..., :3] = symmetric_orthogonalization(Y_h_orth[..., :3].clone()).clone()
+            if not self.cfg.model.use_svd:
+                Y_h_orth[..., :3] = symmetric_orthogonalization(Y_h_orth[..., :3].clone()).clone()
             Y_h_orth = Y_h_orth.view(-1, self.num_joints, 3, 4)
 
             angle_diff, translation_diff = transformation_diff(Y_h_orth, Y_)
-            total_angle_diff += torch.sum(torch.abs(angle_diff), axis=0)
+            angle_diff *= 180 / np.pi
+            total_angle_diff += torch.sum(angle_diff, axis=0)
             total_translation_diff += torch.sum(translation_diff, axis=0)
 
-            tqdm_update = "Epoch={0:04d},loss={1:.4f}, rot_loss={2:.4f}, t_loss={3:.4f}".format(epoch, loss.item() / bs, loss_rot.item() / bs, loss_tr.item() / bs)
+            tqdm_update = "Epoch={0:04d},loss={1:.4f}, joe={2:.4f}, jpe={3:.4f}".format(epoch, loss.item() / bs, angle_diff.mean(), translation_diff.mean())
             tqdm_batch.set_postfix_str(tqdm_update)
             tqdm_batch.update()
 
@@ -180,18 +182,18 @@ class RS_Agent(BaseAgent):
         total_loss_rot /= n
         total_loss_tr /= n
         total_translation_diff /= n
-        total_angle_diff *= 180 / (n * np.pi)
+        total_angle_diff /= n
         losses = (total_loss, total_loss_rot, total_loss_tr)
         self.write_summary(self.train_writer, losses, total_angle_diff, total_translation_diff, epoch)
         self.wandb_summary(True, losses, total_angle_diff, total_translation_diff, epoch)
 
-        tqdm_update = "Train: Epoch={0:04d},loss={1:.4f}, rot_loss={2:.4f}, t_loss={3:.4f}".format(epoch, total_loss, total_loss_rot, total_loss_tr)
+        tqdm_update = "Train: Epoch={0:04d},loss={1:.4f}, joe={2:.4f}, jpe={3:.4f}".format(epoch, total_loss, total_angle_diff.mean(), total_translation_diff.mean())
         tqdm_batch.set_postfix_str(tqdm_update)
         tqdm_batch.update()
         tqdm_batch.close()
 
         message = f"epoch: {epoch}, loss: {total_loss}"
-        return total_loss, message
+        return total_angle_diff.mean(), message
 
     def val_per_epoch(self, epoch):
         tqdm_batch = tqdm(total=self.val_steps, dynamic_ncols=True)
@@ -214,11 +216,11 @@ class RS_Agent(BaseAgent):
                                                 corrupt_markers=self.cfg.training_settings.train_set.corrupt)
                 else:
                     Y_hat = self.run_batch(Y, Z, avg_bone, bs,\
-                                            sample_markers=self.cfg.training_settings.train_set.sample,\
-                                            corrupt_markers=self.cfg.training_settings.train_set.corrupt)
+                                            sample_markers=self.cfg.training_settings.val_set.sample,\
+                                            corrupt_markers=self.cfg.training_settings.val_set.corrupt)
 
                 loss_rot, loss_tr = self.criterion(Y, Y_hat)
-                loss = loss_tr + loss_rot
+                loss = 20*loss_tr + 100*loss_rot
 
                 total_loss += loss.item()
                 total_loss_rot += loss_rot.item()
@@ -231,14 +233,16 @@ class RS_Agent(BaseAgent):
                 Y_[..., 3] *= (self.conv_to_m * avg_bone * 100)
 
                 Y_h_orth = Y_h.reshape(-1, 3, 4)
-                Y_h_orth[..., :3] = symmetric_orthogonalization(Y_h_orth[..., :3].clone()).clone()
+                if not self.cfg.model.use_svd:
+                    Y_h_orth[..., :3] = symmetric_orthogonalization(Y_h_orth[..., :3].clone()).clone()
                 Y_h_orth = Y_h_orth.view(-1, self.num_joints, 3, 4)
 
                 angle_diff, translation_diff = transformation_diff(Y_h_orth, Y_)
-                total_angle_diff += torch.sum(torch.abs(angle_diff), axis=0)
+                angle_diff *= 180 / np.pi
+                total_angle_diff += torch.sum(angle_diff, axis=0)
                 total_translation_diff += torch.sum(translation_diff, axis=0)
 
-                tqdm_update = "Epoch={0:04d},loss={1:.4f}, rot_loss={2:.4f}, t_loss={3:.4f}".format(epoch, loss.item() / bs, loss_rot.item() / bs, loss_tr.item() / bs)
+                tqdm_update = "Epoch={0:04d},loss={1:.4f}, joe={2:.4f}, jpe={3:.4f}".format(epoch, loss.item() / bs, angle_diff.mean(), translation_diff.mean())
                 tqdm_batch.set_postfix_str(tqdm_update)
                 tqdm_batch.update()
 
@@ -246,18 +250,18 @@ class RS_Agent(BaseAgent):
         total_loss_rot /= n
         total_loss_tr /= n
         total_translation_diff /= n
-        total_angle_diff *= 180 / (n * np.pi)
+        total_angle_diff /= n
         losses = (total_loss, total_loss_rot, total_loss_tr)
         self.write_summary(self.val_writer, losses, total_angle_diff, total_translation_diff, epoch)
         self.wandb_summary(False, losses, total_angle_diff, total_translation_diff, epoch)
 
-        tqdm_update = "Val  : Epoch={0:04d},loss={1:.4f}, rot_loss={2:.4f}, t_loss={3:.4f}".format(epoch, total_loss, total_loss_rot, total_loss_tr)
+        tqdm_update = "Val  : Epoch={0:04d},loss={1:.4f}, joe={2:.4f}, jpe={3:.4f}".format(epoch, total_loss, total_angle_diff.mean(), total_translation_diff.mean())
         tqdm_batch.set_postfix_str(tqdm_update)
         tqdm_batch.update()
         tqdm_batch.close()
 
         message = f"epoch: {epoch}, loss: {total_loss}"
-        return total_loss, message
+        return total_angle_diff.mean(), message
 
     def test_one_animation(self):
         if self.cfg.dataset == "CMU":
@@ -291,8 +295,12 @@ class RS_Agent(BaseAgent):
                 Y, Z, F, avg_bone = Y.to(torch.float32).to(self.device).squeeze(0), Z.to(torch.float32).to(self.device).squeeze(0),\
                                     F.to(torch.float32).to(self.device).squeeze(0).unsqueeze(1), avg_bone.to(torch.float32).to(self.device).squeeze(-1)
                 bs = Y.shape[0]
-                
-                Y_hat = self.run_batch(Y, Z, avg_bone, bs,
+
+                if self.cfg.model.used.lower() == "vn":
+                    Y_hat = self.run_batch_vn(Y, Z[None, :], avg_bone, bs, sample_markers=False, 
+                                                corrupt_markers=self.cfg.training_settings.train_set.corrupt)
+                else:
+                    Y_hat = self.run_batch(Y, Z, avg_bone, bs,
                                     sample_markers=self.cfg.training_settings.val_set.sample,
                                     corrupt_markers=self.cfg.training_settings.val_set.corrupt)
 
@@ -300,6 +308,22 @@ class RS_Agent(BaseAgent):
                 loss_rot /= bs
                 loss_tr /= bs
                 loss = loss_tr + loss_rot
+                print(f"loss: {loss.item()}, loss_tr: {loss_tr.item()}, loss_rot: {loss_rot.item()}")
+
+                avg_bone = avg_bone[..., None, None]
+                Y_h = Y_hat.detach().clone()
+                Y_ = Y.detach().clone()
+                Y_h[..., 3] *= (self.conv_to_m * avg_bone * 100)
+                Y_[..., 3] *= (self.conv_to_m * avg_bone * 100)
+
+                Y_h_orth = Y_h.reshape(-1, 3, 4)
+                if not self.cfg.model.use_svd:
+                    Y_h_orth[..., :3] = symmetric_orthogonalization(Y_h_orth[..., :3].clone()).clone()
+                Y_h_orth = Y_h_orth.view(-1, self.num_joints, 3, 4)
+
+                angle_diff, translation_diff = transformation_diff(Y_h_orth, Y_)
+                angle_diff *= 180 / np.pi
+                print(f"angle: {angle_diff.mean()}, tr: {translation_diff.mean()}")
 
                 Y_hat_4x4 = xform_to_mat44(Y_hat)
                 Y_ = F @ Y_hat_4x4

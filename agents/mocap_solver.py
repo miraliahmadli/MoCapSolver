@@ -57,9 +57,9 @@ class MS_Agent(BaseAgent):
         self.val_steps = len(self.val_dataset) // self.batch_size
 
         self.train_data_loader = DataLoader(self.train_dataset, batch_size=self.batch_size,\
-                                            shuffle=True, num_workers=8, pin_memory=True)
+                                            shuffle=True, num_workers=64, pin_memory=True)
         self.val_data_loader = DataLoader(self.val_dataset, batch_size=self.batch_size,\
-                                            shuffle=False, num_workers=8, pin_memory=True)
+                                            shuffle=False, num_workers=64, pin_memory=True)
 
     def smooth_batch(self, X):
         bs = X.shape[0]

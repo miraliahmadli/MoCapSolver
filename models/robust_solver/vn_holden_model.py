@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 
+from tools.utils import symmetric_orthogonalization
 from models.vn_layers import *
 from models.robust_solver.utils import VNResidualBlock
 
@@ -37,11 +38,14 @@ class VNHoldenModel(nn.Module):
         out = self.relu(out)
         out = self.last_layer(out) # [B, N_joints * 4, 3]
         out = out.view(-1, self.output_size // 4, 4, 3)
-        out = out.transpose(-1, -2) # [B, N_joints, 4, 3]
+        out = out.transpose(-1, -2) # [B, N_joints, 3, 4]
 
-        # if self.use_svd:
-        #     out = out.view(-1, 3, 4)
-        #     out[:, :, :3] = symmetric_orthogonalization(out[:, :, :3].clone()).clone()
-        #     out = out.view(-1, self.output_size)
+        if self.use_svd:
+            res = out.reshape(-1, 3, 4)
+            R, t = res[..., :3], res[..., 3:]
+
+            R = symmetric_orthogonalization(R)
+            res = torch.cat((R, t), -1)
+            return res
 
         return out
